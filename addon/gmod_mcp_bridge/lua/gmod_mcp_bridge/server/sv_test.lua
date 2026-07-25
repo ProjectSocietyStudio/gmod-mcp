@@ -1,16 +1,16 @@
--- Moteur de test minimal exécuté côté serveur. Un fichier de test est un module
--- GLua qui RETOURNE une table { ["nom du cas"] = function(t) ... end }. Il est
--- chargé via include() — autorisé par glua-audit, contrairement à CompileString.
+-- Minimal test runner, executed server-side. A test file is a module
+-- of GLua that RETURNS a table { ["case name"] = function(t) ... end }. It is
+-- loaded through include() -- allowed by glua-audit, unlike CompileString.
 --
--- Le paramètre `t` porte les assertions ; une assertion échouée lève (error), ce
--- que pcall capture pour transformer en résultat d'échec structuré.
+-- The `t` parameter carries the assertions. A failing assertion raises, which pcall
+-- catches and turns into a structured failure result.
 local function makeT()
     return {
         eq = function(a, b)
             if a ~= b then error("attendu " .. tostring(b) .. ", obtenu " .. tostring(a), 2) end
         end,
         neq = function(a, b)
-            if a == b then error("valeurs égales inattendues: " .. tostring(a), 2) end
+            if a == b then error("unexpected equal values: " .. tostring(a), 2) end
         end,
         truthy = function(v)
             if not v then error("valeur falsy, attendue truthy", 2) end
@@ -19,13 +19,13 @@ local function makeT()
             if v then error("valeur truthy, attendue falsy", 2) end
         end,
         fail = function(msg)
-            error(msg or "échec explicite", 2)
+            error(msg or "explicit failure", 2)
         end,
     }
 end
 
 GMODMCP.Handlers.run_test = function(args)
-    if not isstring(args.path) then error("path (string) requis, relatif à lua/") end
+    if not isstring(args.path) then error("path (string) required, relative to lua/") end
 
     local cases = include(args.path)
     if not istable(cases) then

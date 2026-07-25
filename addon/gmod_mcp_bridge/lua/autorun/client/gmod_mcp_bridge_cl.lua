@@ -1,35 +1,31 @@
--- gmod_mcp_bridge — moitié CLIENT. Transport par NET messages via le serveur
--- (relais) : le client reçoit les commandes realm=cl du serveur et renvoie le
--- résultat en net (chunké pour les gros payloads type screenshot). Aucun HTTP,
--- aucune config — le canal net client<->serveur est natif GMod.
---
--- Non prouvé dans l'atelier (aucun client GMod ici) ; signatures/realms conformes
--- au wiki, à valider sur un vrai client connecté au serveur.
+-- gmod_mcp_bridge -- CLIENT half. Transport is net messages relayed by the server:
+-- the client receives realm=cl commands and sends results back over net, chunked for
+-- large payloads such as screenshots. No HTTP, no configuration -- the client/server
+-- net channel is native to GMod.
 if not CLIENT then return end
 
 GMODMCP = GMODMCP or {}
 GMODMCP.Handlers = GMODMCP.Handlers or {}
 GMODMCP.Version = GMODMCP.Version or "0.2.0"
-GMODMCP.ASYNC = GMODMCP.ASYNC or {} -- sentinelle : le handler enverra son résultat plus tard
+GMODMCP.ASYNC = GMODMCP.ASYNC or {} -- sentinel: the handler will send its result later
 
 local errorBuffer = {}
 
--- Renvoie un résultat au serveur, chunké ET ÉTALÉ DANS LE TEMPS.
+-- Sends a result back to the server, chunked AND SPREAD OVER TIME.
 --
--- Mesuré le 25/07/2026 : la version d'origine découpait en chunks de 60 000 octets et
--- les poussait tous dans la MÊME frame. Un screenshot 1920x1080 en base64 pèse plusieurs
--- centaines de Ko — le canal fiable client->serveur saturait avec
--- « send reliable stream overflow » (x899 dans la console du joueur).
+-- Measured 2026-07-25: the original version split payloads into 60000-byte chunks and
+-- pushed them all in the SAME frame. A 1920x1080 screenshot is several hundred KB of
+-- base64, which overflowed the client-to-server reliable channel ("send reliable stream
+-- overflow", x899 in the player's console) and eventually timed the client out.
 --
--- Le piège est que la panne est PERSISTANTE et SILENCIEUSE côté outil : une fois le
--- canal saturé, plus AUCUN message net du client ne passe. Tous les outils realm=cl
--- tombaient donc en timeout après une seule tentative de capture, y compris ceux dont le
--- payload tient en un chunk (read_client_convars). Le symptôme désigne le mauvais
--- coupable : on croit que le relais client est cassé alors qu'il a juste été noyé.
+-- The trap is that the failure is PERSISTENT and SILENT from the tool's side: once the
+-- channel is swamped, NO net message from that client gets through. Every realm=cl tool
+-- therefore timed out after a single capture attempt, including ones whose payload fits
+-- in one chunk (read_client_convars). The symptom accuses the wrong culprit -- the relay
+-- looks broken when it has merely been flooded.
 --
--- Deux corrections, les deux nécessaires : des chunks bien plus petits que la limite de
--- 64 KiB du message net (la limite du message n'est pas celle du tampon fiable), et un
--- chunk par frame pour laisser le flux se vider.
+-- Two fixes, both required: chunks well below the net message's 64 KiB ceiling (that
+-- ceiling is not the reliable buffer's), and one chunk per frame so the stream drains.
 local CHUNK = 7000
 
 local function sendResult(id, ok, data, err)
@@ -76,7 +72,7 @@ H.read_panels = function(args)
 end
 
 H.inspect_panel = function(args)
-    if not isstring(args.class) then error("class (string) requis") end
+    if not isstring(args.class) then error("class (string) is required") end
     local flat = {}
     walk(vgui.GetWorldPanel(), 0, 32, flat)
     local found, matches = nil, 0
@@ -86,7 +82,7 @@ H.inspect_panel = function(args)
             if not found then found = info end
         end
     end
-    if not found then error("aucun panel de classe " .. args.class) end
+    if not found then error("no panel of class " .. args.class) end
     return { match = found, total_matches = matches }
 end
 
@@ -107,24 +103,24 @@ end
 H.capture_screen = function(_, cmd)
     local w, h = ScrW(), ScrH()
     local hookName = "gmod_mcp_capture_" .. cmd.id
-    -- render.Capture hors d'un hook de rendu renvoie une image noire : on capture
-    -- au prochain PostRender puis on se désabonne.
+    -- render.Capture outside a render hook returns a black image, so capture on the next
+    -- PostRender and unsubscribe immediately.
     hook.Add("PostRender", hookName, function()
         hook.Remove("PostRender", hookName)
-        -- quality explicite : le défaut produit un JPEG bien plus lourd, et chaque Ko se
-        -- paie en chunks sur le canal fiable (cf. sendResult). 70 reste largement lisible
-        -- pour vérifier une mise en page Derma.
+        -- Explicit quality: the default produces a much heavier JPEG, and every KB is
+        -- paid for in chunks on the reliable channel (see sendResult). 70 is still
+        -- perfectly legible for checking a Derma layout.
         local ok, data = pcall(render.Capture, { format = "jpeg", quality = 70, x = 0, y = 0, w = w, h = h })
         if ok and isstring(data) then
             sendResult(cmd.id, true, { format = "jpeg", w = w, h = h, base64 = util.Base64Encode(data) })
         else
-            sendResult(cmd.id, false, nil, "render.Capture a échoué: " .. tostring(data))
+            sendResult(cmd.id, false, nil, "render.Capture failed: " .. tostring(data))
         end
     end)
     return GMODMCP.ASYNC
 end
 
--- --------------------------------------------------------- réception commandes ---
+-- ------------------------------------------------------------ command intake ---
 net.Receive("gmod_mcp_cl_cmd", function()
     local id = net.ReadString()
     local tool = net.ReadString()
@@ -134,7 +130,7 @@ net.Receive("gmod_mcp_cl_cmd", function()
 
     local handler = GMODMCP.Handlers[tool]
     if not handler then
-        sendResult(id, false, nil, "handler client inconnu: " .. tostring(tool))
+        sendResult(id, false, nil, "unknown client handler: " .. tostring(tool))
         return
     end
     local ok, res = pcall(handler, args, cmd)
@@ -147,7 +143,7 @@ net.Receive("gmod_mcp_cl_cmd", function()
     end
 end)
 
--- Erreurs Lua client, exposées via read_console (pas de push, modèle pull).
+-- Client Lua errors, exposed through read_console. Pull model, never pushed.
 hook.Add("OnLuaError", "gmod_mcp_bridge_cl.errors", function(err, realm, stack, name)
     errorBuffer[#errorBuffer + 1] = { error = err, realm = realm or "client", name = name, stack = stack }
     if #errorBuffer > 100 then table.remove(errorBuffer, 1) end

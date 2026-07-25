@@ -1,6 +1,6 @@
--- Capture des erreurs Lua serveur et remontée au daemon en événement. Double
--- filet avec le parse de log côté daemon : OnLuaError peut manquer des erreurs
--- (protection anti-spam au-delà de 5 erreurs/seconde, cf. wiki).
+-- Captures server Lua errors and forwards them to the daemon as events. This is a
+-- second net alongside the daemon's log parsing: OnLuaError can miss errors, since the
+-- engine throttles it past 5 errors per second.
 hook.Add("OnLuaError", "gmod_mcp_bridge.errors", function(err, realm, stack, name, id)
     if not GMODMCP.SendEvent then return end
     GMODMCP.SendEvent("lua_error", {

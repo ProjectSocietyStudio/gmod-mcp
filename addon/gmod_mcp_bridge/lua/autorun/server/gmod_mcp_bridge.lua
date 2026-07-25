@@ -1,8 +1,11 @@
--- gmod_mcp_bridge — pont serveur entre le serveur GMod et le daemon gmod-mcp.
+-- gmod_mcp_bridge -- the server-side bridge between a GMod server and the gmod-mcp
+-- daemon.
 --
--- Realm : SERVEUR uniquement (Phase 2). Aucun net message, aucune surface client :
--- les commandes arrivent du daemon local via long-poll HTTP authentifié par token
--- sur 127.0.0.1. C'est un OUTIL DE DÉVELOPPEMENT — à ne jamais monter en production.
+-- Commands arrive over a file channel inside GMod's DATA sandbox: the daemon and srcds
+-- share a filesystem, so no network is involved. Client-realm commands are relayed on
+-- from here over net messages (see sv_client_relay.lua).
+--
+-- This is a DEVELOPMENT TOOL. Never mount it on a production server.
 if not SERVER then return end
 
 GMODMCP = GMODMCP or {}
@@ -20,8 +23,9 @@ include(base .. "sv_test.lua")
 include(base .. "sv_client_relay.lua")
 include(base .. "sv_errors.lua")
 
--- Démarrer après InitPostEntity : les cvars de server.cfg sont alors appliquées
--- (les autoruns s'exécutent AVANT server.cfg — piège mesuré du projet).
+-- Start after InitPostEntity, once server.cfg has been applied. Addon autoruns run
+-- BEFORE server.cfg, so anything reading a cvar at load time gets the engine default
+-- rather than the owner's setting -- a trap measured the hard way.
 hook.Add("InitPostEntity", "gmod_mcp_bridge.start", function()
     GMODMCP.Start()
 end)

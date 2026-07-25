@@ -1,10 +1,10 @@
--- Transport par FICHIERS dans le sandbox DATA de GMod. Le daemon et srcds
--- partagent le filesystem, donc aucune dépendance réseau — mesuré : le HTTP() de
--- GMod ne joint pas le daemon localhost depuis un serveur dédié.
+-- FILE transport inside GMod's DATA sandbox. The daemon and srcds
+-- share a filesystem, so there is no network dependency. This was measured: GMod's
+-- HTTP() does not reach a localhost daemon from a dedicated server.
 --
--- Protocole : le daemon écrit `gmod_mcp/cmd/<id>.json` ; on le lit, on le supprime
--- (consommation unique), on exécute le handler, on écrit `gmod_mcp/res/<id>.json`.
--- Les événements partent en `gmod_mcp/evt/<n>.json`.
+-- Protocol: the daemon writes `gmod_mcp/cmd/<id>.json`; we read it, delete it (single
+-- consumption), run the handler and write `gmod_mcp/res/<id>.json`. Events go out as
+-- `gmod_mcp/evt/<n>.json`.
 local BASE = "gmod_mcp/"
 local CMD, RES, EVT = BASE .. "cmd/", BASE .. "res/", BASE .. "evt/"
 local running = false
@@ -17,17 +17,17 @@ local function ensureDirs()
     file.CreateDir(BASE .. "evt")
 end
 
--- Écrit un résultat pour le daemon (utilisé aussi par le relais client).
+-- Writes a result for the daemon. Also used by the client relay.
 function GMODMCP.WriteResult(id, tbl)
     file.Write(RES .. id .. ".json", util.TableToJSON(tbl))
 end
 
--- Écrit un résultat déjà sérialisé (JSON réassemblé depuis les chunks net client).
+-- Writes an already-serialised result (JSON reassembled from the client's net chunks).
 function GMODMCP.WriteResultRaw(id, json)
     file.Write(RES .. id .. ".json", json)
 end
 
--- Événement asynchrone vers le daemon (erreurs Lua, bridge_up, etc.).
+-- Asynchronous event to the daemon (Lua errors, bridge_up, and so on).
 function GMODMCP.SendEvent(etype, payload)
     seq = seq + 1
     local name = EVT .. os.time() .. "_" .. seq .. ".json"
@@ -52,11 +52,11 @@ local function poll()
     for _, fn in ipairs(files) do
         local path = CMD .. fn
         local raw = file.Read(path, "DATA")
-        file.Delete(path) -- consommer une seule fois, avant exécution
+        file.Delete(path) -- consume exactly once, before running the handler
         local cmd = raw and util.JSONToTable(raw)
         if type(cmd) == "table" and cmd.id then
             if cmd.realm == "cl" and GMODMCP.RelayToClient then
-                -- Commande client : relayée au client par net ; le résultat arrivera
+                -- Client command: relayed over net; the result will arrive
                 -- plus tard (net -> fichier res) via sv_client_relay.
                 GMODMCP.RelayToClient(cmd)
             else
@@ -72,6 +72,6 @@ function GMODMCP.Start()
     ensureDirs()
     GMODMCP.Log("transport fichier actif -> data/" .. BASE)
     GMODMCP.SendEvent("bridge_up", { version = GMODMCP.Version, map = game.GetMap() })
-    -- Poll rapide : le round-trip fichier est local et quasi instantané.
+    -- Fast poll: the file round-trip is local and near-instant.
     timer.Create("gmod_mcp_bridge_poll", 0.25, 0, poll)
 end

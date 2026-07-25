@@ -1,13 +1,13 @@
--- Relais serveur <-> client. Les commandes realm=cl (arrivées du daemon par
--- fichier) sont envoyées au client par net message ; le client exécute et renvoie
--- le résultat par net (chunké pour les gros payloads type screenshot), que le
--- serveur réassemble et écrit dans res/ pour le daemon.
+-- Server/client relay. realm=cl commands arrive from the daemon over the file
+-- channel and are forwarded to the client as a net message; the client runs them and
+-- sends the result back over net, chunked for large payloads such as screenshots. The
+-- server reassembles the chunks and writes res/ for the daemon.
 --
--- Aucun HTTP : le canal net client<->serveur est natif GMod et fiable.
+-- No HTTP: the client/server net channel is native to GMod.
 util.AddNetworkString("gmod_mcp_cl_cmd")
 util.AddNetworkString("gmod_mcp_cl_res")
 
--- Cible : le joueur d'un SteamID donné, sinon le premier connecté.
+-- Target: the player matching a given SteamID, otherwise the first one connected.
 local function targetPlayer(args)
     if istable(args) and isstring(args.player) then
         for _, ply in ipairs(player.GetAll()) do
@@ -20,7 +20,7 @@ end
 function GMODMCP.RelayToClient(cmd)
     local ply = targetPlayer(cmd.args)
     if not IsValid(ply) then
-        GMODMCP.WriteResult(cmd.id, { id = cmd.id, ok = false, error = "aucun client connecté (outil realm=cl)" })
+        GMODMCP.WriteResult(cmd.id, { id = cmd.id, ok = false, error = "no client connected (realm=cl tool)" })
         return
     end
     net.Start("gmod_mcp_cl_cmd")
@@ -31,13 +31,13 @@ function GMODMCP.RelayToClient(cmd)
     net.Send(ply)
 end
 
--- Réassemblage des résultats client (chunks).
+-- Reassembly of chunked client results.
 local chunks = {}
 local rlReset, rlCount = 0, 0
 
 net.Receive("gmod_mcp_cl_res", function(_, ply)
     if not IsValid(ply) then return end
-    -- Anti-spam généreux (compatible avec le chunking légitime).
+    -- Generous rate limit, sized to let legitimate chunking through.
     local now = CurTime()
     if now ~= rlReset then rlReset = now; rlCount = 0 end
     rlCount = rlCount + 1

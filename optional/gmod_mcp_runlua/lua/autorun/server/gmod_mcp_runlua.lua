@@ -1,28 +1,28 @@
--- gmod_mcp_runlua — extension OPTIONNELLE et DEV-ONLY du bridge.
+-- gmod_mcp_runlua -- OPTIONAL, DEVELOPMENT-ONLY extension to the bridge.
 --
--- Ajoute le handler `run_lua` : exécution de Lua arbitraire côté serveur, gardée
--- par confirmation. Isolé du bridge principal parce que l'exécution dynamique
--- (CompileString) est — à juste titre — proscrite par glua-audit pour tout addon
--- destiné à la vente. Ne JAMAIS monter en production.
+-- Adds the `run_lua` handler: arbitrary server-side Lua execution, gated behind an
+-- explicit confirmation. It is kept out of the main bridge because dynamic execution
+-- (CompileString) is -- rightly -- forbidden by glua-audit for any addon meant to be
+-- sold. NEVER mount this on a production server.
 --
--- Activation : symlink ce dossier dans addons/ puis ./tools/sync-server-config.sh,
--- ou copie-le dans garrysmod/addons/. Nécessite le bridge principal chargé.
+-- To enable: symlink this folder into your server's addons/ directory,
+-- or copy it into garrysmod/addons/. Requires the main bridge to be loaded.
 if not SERVER then return end
 
 if not GMODMCP or not GMODMCP.Handlers then
-    ErrorNoHalt("[gmod-mcp] gmod_mcp_runlua chargé sans le bridge principal — ignoré\n")
+    ErrorNoHalt("[gmod-mcp] gmod_mcp_runlua loaded without the main bridge -- ignored\n")
     return
 end
 
 GMODMCP.Handlers.run_lua = function(args, cmd)
-    -- Double garde : le daemon ne pose confirmed=true qu'après validation humaine.
-    if not cmd.confirmed then error("run_lua refusé : confirmation requise") end
+    -- Second gate: the daemon only sets confirmed=true after a human approves.
+    if not cmd.confirmed then error("run_lua refused: confirmation required") end
     if not isstring(args.code) then error("code (string) requis") end
 
     local fn = CompileString(args.code, "gmod_mcp/run_lua", false)
     if not isfunction(fn) then error("compilation: " .. tostring(fn)) end
 
-    GMODMCP.Log("run_lua exécuté (" .. #args.code .. " octets)")
+    GMODMCP.Log("run_lua executed (" .. #args.code .. " bytes)")
     local packed = { pcall(fn) }
     local ok = table.remove(packed, 1)
     if not ok then error(packed[1]) end

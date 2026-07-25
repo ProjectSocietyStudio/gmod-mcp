@@ -1,9 +1,9 @@
--- Handlers d'introspection, indexés par nom d'outil. Chaque handler reçoit
--- (args, cmd) et renvoie une table sérialisable. Une erreur (via error()) est
--- capturée par le dispatch et renvoyée comme résultat en échec.
+-- Introspection handlers, keyed by tool name. Each handler takes (args, cmd) and
+-- returns a serialisable table. Raising through error() is caught by the dispatcher and
+-- returned as a failure result.
 --
--- run_lua (exécution Lua arbitraire) n'est PAS ici : il vit dans l'addon optionnel
--- gmod_mcp_runlua, isolé car l'exécution dynamique est proscrite par glua-audit.
+-- run_lua (arbitrary Lua execution) is deliberately NOT here: it lives in the optional
+-- gmod_mcp_runlua addon, isolated because glua-audit forbids dynamic execution.
 local H = GMODMCP.Handlers
 
 H.read_runtime = function()
@@ -58,7 +58,7 @@ end
 
 H.inspect_entity = function(args)
     local ent = Entity(args.index or -1)
-    if not IsValid(ent) then error("entité invalide: " .. tostring(args.index)) end
+    if not IsValid(ent) then error("invalid entity: " .. tostring(args.index)) end
     local owner = ent:GetOwner()
     return {
         index = ent:EntIndex(),
@@ -101,8 +101,8 @@ H.read_convars = function(args)
 end
 
 H.read_net_messages = function()
-    -- GMod n'expose pas de compteur ; on balaie le pool des chaînes réseau et on
-    -- s'arrête après une série de trous.
+    -- GMod exposes no counter, so sweep the network string pool and stop after a run
+    -- of consecutive gaps.
     local out, misses = {}, 0
     for id = 1, 8192 do
         local name = util.NetworkIDToString(id)
@@ -118,9 +118,9 @@ H.read_net_messages = function()
 end
 
 H.read_timers = function(args)
-    -- GMod n'énumère pas les timers ; fournir names[] pour les inspecter.
+    -- GMod cannot enumerate timers; pass names[] to inspect specific ones.
     if not istable(args.names) then
-        return { note = "GMod n'énumère pas les timers — passez names[] pour interroger des timers précis." }
+        return { note = "GMod cannot enumerate timers -- pass names[] to query specific ones." }
     end
     local out = {}
     for _, name in ipairs(args.names) do
