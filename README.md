@@ -78,22 +78,60 @@ NUL-safe log reads.
 `read_logs`, `package`, `patch_file`, `restore_patch`, `reload_file`, `reload_addon`,
 `validate`, `run_iteration`.
 
-**Server (via bridge)** — `read_runtime`, `read_players`, `read_entities`, `inspect_entity`,
-`read_hooks`, `read_convars`, `read_net_messages`, `read_timers`, `run_console_command`,
-`send_debug`, `run_test`, `run_lua` (guarded, optional extension).
+**Server (via bridge)** — `batch`, `read_runtime`, `read_players`, `read_entities`,
+`inspect_entity`, `read_hooks`, `read_convars`, `read_net_messages`, `read_timers`,
+`run_console_command`, `send_debug`, `run_test`, `run_lua` (guarded, optional extension).
 
 **Client (via bridge)** — `read_panels`, `inspect_panel`, `capture_screen`, `read_console`,
 `read_client_convars`.
 
+`health` also asks the addon which handlers it registered and reports any the daemon
+declares but the game does not have. That gap used to surface only as an "unknown handler"
+after a full round trip, or — when a whole `include` was missing — not at all.
+
+`capture_screen` returns a real image content block. Returned as text, a base64 JPEG is
+billed to the model token by token and still cannot be looked at, so the "see" half of an
+act/see loop silently does nothing while every test passes.
+
+## Batching
+
+A bridge round trip costs about 0.4s: the addon polls at 0.25s and the daemon scans at
+0.15s. Any sequence that acts and then looks pays that per gesture. `batch` carries up to
+32 server steps in one command instead:
+
+```json
+{ "steps": [{"tool": "read_runtime"},
+            {"tool": "read_timers", "args": {"names": ["gmod_mcp_bridge_poll"]}}],
+  "settleMs": 100 }
+```
+
+Measured against a live DarkRP server: three steps in 0.19s, versus roughly 0.75s as three
+separate calls.
+
+A failing step is data, not a transport error — each step reports its own `ok`/`data`/
+`error`, `stopOnError` marks the rest `skipped` and records `abortedAt`, so the caller sees
+the whole shape of the batch. `settleMs` pauses between steps, which is what makes
+act-then-look honest: without it a step observes the frame before the previous one landed.
+
+Guarded tools are checked on both sides. `batch` is a single unguarded definition, so
+without the check a `run_lua` step would bypass the confirmation its own gate demands; the
+daemon resolves each step against the registry and the Lua runner repeats the check.
+
+Client-realm steps are refused explicitly rather than silently dropped — a batch runs
+inside the server addon, and `cl` tools are relayed over net.
+
 All three realms have been exercised against a live DarkRP server: the server tools on
 `rp_nycity_day` at tick 33, and the client tools against a connected GMod client —
 `read_panels` returning a live VGUI tree and `capture_screen` returning a complete 1920x1080
-JPEG.
+JPEG. `batch` was proven the same way, including its failure paths: a step raising returns
+the real Lua error with `file:line`, the rest come back `skipped`, and a `run_lua` step is
+refused unconfirmed and executes confirmed.
 
 ## Security
 
 - Guarded tools (`run_lua`) require `confirm: true` or membership in `toolAllowlist`; otherwise
-  they are refused without executing. Every call, result, patch and executed Lua line is
+  they are refused without executing. A guarded tool used as a `batch` step needs the batch
+  itself confirmed, and both the daemon and the Lua runner enforce that independently. Every call, result, patch and executed Lua line is
   appended to `<repoRoot>/.gmod-mcp/logs/audit.jsonl`.
 - `patch_file` is locked to the repo root and refuses paths outside it.
 - No network listener. The server transport is files inside DATA; the MCP layer is stdio. The
