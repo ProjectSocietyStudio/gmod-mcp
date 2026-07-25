@@ -20,7 +20,12 @@ H.list_handlers = function()
 end
 
 H.read_runtime = function()
+    -- Resolved at call time, not at load: sv_client_relay.lua is included after this file.
+    -- The client relay is the one part of the bridge that can be waiting on something, and
+    -- it used to have no observable state -- a stuck channel read exactly like an idle one.
+    local relay = GMODMCP.RelayState and GMODMCP.RelayState() or nil
     return {
+        relay = relay,
         map = game.GetMap(),
         gamemode = engine.ActiveGamemode(),
         curtime = CurTime(),

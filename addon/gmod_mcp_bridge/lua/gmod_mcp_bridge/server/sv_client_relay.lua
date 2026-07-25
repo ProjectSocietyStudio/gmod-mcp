@@ -34,14 +34,51 @@ local chunks = {}
 local pending = {}
 local rlReset, rlCount = 0, 0
 
--- Slightly above the daemon's default 30s round-trip timeout: by then nobody is waiting
--- for this result, so writing one would only leave an orphan file in res/.
+-- UNDER the daemon's default 30s round-trip timeout, on purpose.
+--
+-- A client that never answers used to be reported by the daemon's own timeout, which knows
+-- nothing about why: it said "is srcds running with the addon mounted?" while srcds was
+-- fine and the client was frozen. Failing here first means the caller gets the real
+-- sentence, and gets it in 20s rather than 30.
+--
+-- Preventive, not a fix for anything observed: the blockage of 2026-07-25 was two daemons
+-- deleting each other's results, not an abandoned client request.
+local CLIENT_TIMEOUT = 20
+
+-- Past this, nobody is waiting on the daemon side either, so writing a result would only
+-- leave an orphan file in res/. Kept above CLIENT_TIMEOUT so the explicit failure wins.
 local STALE_AFTER = 45
 
 local function resolveFailure(id, err)
     chunks[id] = nil
     pending[id] = nil
     GMODMCP.WriteResult(id, { id = id, ok = false, error = err })
+end
+
+-- Readable relay state, folded into read_runtime. The relay had no observable state at
+-- all, so a stuck channel and a healthy idle one looked identical from the daemon.
+function GMODMCP.RelayState()
+    local now = RealTime()
+    local waiting, oldest, tool = 0, 0, nil
+    for _, rec in pairs(pending) do
+        waiting = waiting + 1
+        local age = now - rec.at
+        if age > oldest then
+            oldest = age
+            tool = rec.tool
+        end
+    end
+    local partial = 0
+    for _ in pairs(chunks) do
+        partial = partial + 1
+    end
+    return {
+        waiting = waiting,
+        oldest_seconds = math.Round(oldest, 1),
+        oldest_tool = tool,
+        partial_transfers = partial,
+        client_timeout = CLIENT_TIMEOUT,
+    }
 end
 
 function GMODMCP.RelayToClient(cmd)
@@ -52,7 +89,7 @@ function GMODMCP.RelayToClient(cmd)
         GMODMCP.WriteResult(cmd.id, { id = cmd.id, ok = false, error = "no client connected (realm=cl tool)" })
         return
     end
-    pending[cmd.id] = { ply = ply, at = RealTime() }
+    pending[cmd.id] = { ply = ply, at = RealTime(), tool = cmd.tool }
     net.Start("gmod_mcp_cl_cmd")
     net.WriteString(cmd.id)
     net.WriteString(cmd.tool)
@@ -71,14 +108,29 @@ hook.Add("PlayerDisconnected", "gmod_mcp_bridge.relay_cleanup", function(ply)
     end
 end)
 
--- Drops commands nobody is waiting for any more. Without it a daemon-side timeout leaves
--- the entry and its half-received chunks in memory for the rest of the map.
-timer.Create("gmod_mcp_bridge.relay_sweep", 15, 0, function()
+-- Two jobs, both about a client that stopped answering:
+--
+-- 1. Past CLIENT_TIMEOUT, fail the command EXPLICITLY. Silence here becomes the daemon's
+--    generic 30s timeout, which cannot name the client and historically accused srcds.
+--    Any half-received chunks go with it -- a partial reassembly is not a result, and
+--    keeping it only means a later retry appears to complete a transfer it never made.
+-- 2. Past STALE_AFTER, nobody is waiting any more: drop the entry without writing, since
+--    the result file would be an orphan in res/.
+--
+-- Runs at 2s so CLIENT_TIMEOUT means roughly what it says.
+timer.Create("gmod_mcp_bridge.relay_sweep", 2, 0, function()
     local now = RealTime()
     for id, rec in pairs(pending) do
-        if now - rec.at > STALE_AFTER then
+        local age = now - rec.at
+        if age > STALE_AFTER then
             chunks[id] = nil
             pending[id] = nil
+        elseif age > CLIENT_TIMEOUT then
+            local got = chunks[id]
+            local progress = got and string.format(" (%d/%d chunks received, discarded)", got.got, got.total) or ""
+            resolveFailure(id, string.format(
+                "the client did not answer in %ds%s -- realm=cl tool '%s'. The game client is frozen, hung in a render hook, or its net channel is saturated; srcds itself is fine.",
+                CLIENT_TIMEOUT, progress, tostring(rec.tool)))
         end
     end
 end)
@@ -98,8 +150,22 @@ net.Receive("gmod_mcp_cl_res", function(_, ply)
     if not isnumber(seq) or not isnumber(total) then return end
     if total < 1 or total > 4096 or seq < 1 or seq > total then return end
 
+    -- No pending command means we already failed this id (client timeout, disconnect) or
+    -- never sent it. Accumulating its chunks would rebuild a result nobody can correlate,
+    -- so an interrupted transfer is dropped rather than half-kept.
+    if not pending[id] then
+        chunks[id] = nil
+        return
+    end
+
     local rec = chunks[id]
     if not rec then
+        rec = { parts = {}, total = total, got = 0 }
+        chunks[id] = rec
+    end
+    -- A second answer for the same id declaring a different length cannot be reassembled
+    -- with the first. Start over on the new one instead of concatenating two payloads.
+    if rec.total ~= total then
         rec = { parts = {}, total = total, got = 0 }
         chunks[id] = rec
     end

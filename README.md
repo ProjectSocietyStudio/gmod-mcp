@@ -85,6 +85,13 @@ persistent and silent — once the channel is swamped, *no* net message from tha
 through, so every client tool times out and the relay looks broken when it has merely been
 flooded.
 
+A relayed command the client never answers fails **server-side after 20 s**, under the
+daemon's 30 s round trip, and says so: which tool, how many chunks arrived before the transfer
+was discarded, and that srcds itself is fine. Half-received chunks are dropped with it — a
+partial reassembly is not a result. `read_runtime` carries the relay's state (`waiting`,
+`oldest_seconds`, `oldest_tool`, `partial_transfers`), because a stuck channel and an idle one
+used to read identically from the daemon.
+
 Per-frame pacing alone was not enough. Measured on a real player: a full-screen capture at
 quality 80 came to 424 KB and 62 chunks and dropped them from the server, while a full-screen
 q70 capture (100 KB, 15 chunks) had gone through fine minutes earlier. Two things were wrong.
