@@ -190,13 +190,13 @@ export const serverBridgeTools: AnyToolDef[] = [
 export const clientBridgeTools: AnyToolDef[] = [
   bridgeTool({
     name: "read_panels",
-    description: "Derma/VGUI panel tree (class, name, visibility, position, size), bounded by maxDepth.",
+    description: "Derma/VGUI panel tree: class, name, visibility, size, position both parent-relative (x/y) and absolute (screen_x/screen_y), whether mouse input is enabled, and on_screen. Filter on on_screen: `visible` is the panel's own flag only, so a flat tree is mostly panels belonging to closed menus. Use screen_x/screen_y to aim a click or a capture region -- x/y are relative to the parent and are (0,0) for most nested panels.",
     realm: "cl",
     inputSchema: { maxDepth: z.number().int().min(0).max(32).default(6) },
   }),
   bridgeTool({
     name: "inspect_panel",
-    description: "Details of the first panel of a given class, plus how many occur in the VGUI tree.",
+    description: "Details of the first panel of a given class, plus how many occur in the VGUI tree. screen_x/screen_y give absolute coordinates for clicking or capturing it.",
     realm: "cl",
     inputSchema: { class: z.string().min(1) },
   }),

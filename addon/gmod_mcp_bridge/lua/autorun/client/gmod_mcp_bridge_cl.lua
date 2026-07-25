@@ -60,32 +60,51 @@ end
 local H = GMODMCP.Handlers
 
 local function panelInfo(panel)
+    -- GetPos is PARENT-RELATIVE, so nested panels all report (0,0)-ish coordinates that
+    -- cannot aim a click or a capture region -- which is exactly what the panel tools are
+    -- for. screen_x/screen_y are the absolute ones; keep x/y too, since a layout question
+    -- is usually about the offset within the parent.
     local x, y = panel:GetPos()
     local w, h = panel:GetSize()
-    return { class = panel:GetClassName(), name = panel:GetName(), visible = panel:IsVisible(), x = x, y = y, w = w, h = h }
+    local sx, sy = panel:LocalToScreen(0, 0)
+    return {
+        class = panel:GetClassName(),
+        name = panel:GetName(),
+        visible = panel:IsVisible(),
+        x = x, y = y, w = w, h = h,
+        screen_x = sx, screen_y = sy,
+        -- A panel with mouse input disabled will never answer a synthetic click, and that
+        -- looks identical to a click that missed.
+        mouse_input = panel:IsMouseInputEnabled(),
+    }
 end
 
-local function walk(panel, depth, maxDepth, out)
+-- IsVisible() reports the panel's own flag and says nothing about its ancestors, so a
+-- flat tree is mostly panels belonging to a closed menu -- the spawn menu alone accounts
+-- for a hundred of them. on_screen carries the ancestors' visibility down the walk, which
+-- is what "can I click this" actually depends on.
+local function walk(panel, depth, maxDepth, out, parentVisible)
     if not IsValid(panel) or depth > maxDepth then return end
     local info = panelInfo(panel)
     info.depth = depth
+    info.on_screen = parentVisible and info.visible or false
     out[#out + 1] = info
     for _, child in ipairs(panel:GetChildren()) do
-        walk(child, depth + 1, maxDepth, out)
+        walk(child, depth + 1, maxDepth, out, info.on_screen)
     end
 end
 
 H.read_panels = function(args)
     local maxDepth = isnumber(args.maxDepth) and args.maxDepth or 6
     local out = {}
-    walk(vgui.GetWorldPanel(), 0, maxDepth, out)
+    walk(vgui.GetWorldPanel(), 0, maxDepth, out, true)
     return { count = #out, panels = out }
 end
 
 H.inspect_panel = function(args)
     if not isstring(args.class) then error("class (string) is required") end
     local flat = {}
-    walk(vgui.GetWorldPanel(), 0, 32, flat)
+    walk(vgui.GetWorldPanel(), 0, 32, flat, true)
     local found, matches = nil, 0
     for _, info in ipairs(flat) do
         if info.class == args.class then
