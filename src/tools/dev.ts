@@ -14,9 +14,9 @@ const patchFile = defineTool({
     "Replaces a file's contents (inside the repo) after backing it up. Returns a patch id for restore_patch, plus the unified diff. rationale explains the change.",
   realm: "local",
   inputSchema: {
-    file: z.string().min(1).describe("Chemin relatif au repo GMod."),
+    file: z.string().min(1).describe("Path relative to the GMod repo."),
     content: z.string().describe("The file's complete new contents."),
-    rationale: z.string().min(1).describe("Pourquoi ce changement."),
+    rationale: z.string().min(1).describe("Why this change is being made."),
   },
   handler: async ({ file, content, rationale }, ctx) => {
     const patch = await ctx.patch.applyFile(file, content, rationale);
@@ -58,7 +58,7 @@ const reloadAddon = defineTool({
 const validateTool = defineTool({
   name: "validate",
   description:
-    "Verdict de la boucle : lint de l'addon + erreurs runtime du boot courant. ok=true si lint vert ET aucune erreur runtime.",
+    "Verdict for the loop: the addon's lint plus the current boot's runtime errors. ok=true when lint is clean AND no runtime error was seen.",
   realm: "local",
   inputSchema: { addon: z.string().min(1) },
   handler: async ({ addon }, ctx) => ({ ...(await validate(ctx.config, addon)) }),
@@ -72,7 +72,7 @@ const runIteration = defineTool({
   inputSchema: {
     addon: z.string().min(1),
     file: z.string().optional().describe("File to patch, together with content."),
-    content: z.string().optional().describe("Nouveau contenu du fichier."),
+    content: z.string().optional().describe("The file's new contents."),
     rationale: z.string().optional(),
     reload: z.boolean().default(true).describe("Touch files to trigger autorefresh after patching."),
   },

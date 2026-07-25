@@ -6,7 +6,7 @@ import { resolveAddonDir } from "./scripts.js";
 /**
  * Bumps mtime to trigger GMod's Lua autorefresh, which reloads changed files. This is
  * best-effort: autorefresh covers editing
- * fichiers existants ; les nouveaux fichiers ou les autoruns exigent un restart
+ * existing files; new files and autoruns still need a restart
  * -- it is up to the caller (validation, iteration) to decide.
  */
 export function touchFile(config: Config, file: string): boolean {

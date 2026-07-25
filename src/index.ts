@@ -16,9 +16,9 @@ import { VERSION } from "./version.js";
 /**
  * Entry point of the gmod-mcp MCP server (stdio transport, local-first).
  * Launched by Claude Code, so nothing may go to stdout (that is the protocol
- * stderr uniquement. Le bridge serveur passe par des fichiers dans le sandbox DATA
- * sandbox (`FileBridge`). No network: GMod's `HTTP()` was measured not to reach the
- * daemon localhost depuis srcds.
+ * channel) -- diagnostics go to stderr only. The server bridge runs over files inside
+ * GMod's DATA sandbox (`FileBridge`). No network: GMod's `HTTP()` was measured not to
+ * reach a localhost daemon from srcds.
  */
 async function main(): Promise<void> {
   const config = loadConfig();

@@ -7,7 +7,7 @@ import { z } from "zod";
  * otherwise defaults. Every field in the file is optional and gets filled in.
  */
 export const ConfigFile = z.object({
-  /** Racine du repo GMod (contient tools/, addons/, srcds/). */
+  /** Root of the GMod repo (contains tools/, addons/, srcds/). */
   repoRoot: z.string().optional(),
   /** Addons targeted by default for lint and reload. */
   addons: z.array(z.string()).default([]),
@@ -31,7 +31,7 @@ export interface Config extends ConfigFile {
   stateDir: string;
 }
 
-/** Marqueurs qui identifient la racine du repo GMod. */
+/** Markers that identify the root of the GMod repo. */
 const REPO_MARKERS = ["tools/lint.sh", "CLAUDE.md"];
 
 function looksLikeRepoRoot(dir: string): boolean {

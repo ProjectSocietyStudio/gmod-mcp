@@ -50,8 +50,8 @@ export function isToolImage(value: unknown): value is ToolImage {
  * Definition of an MCP tool. The zod `shape` describes the inputs; the handler
  * receives arguments already validated and typed.
  *
- * `guarded: true` ⇒ l'appel exige `confirm: true` dans les args (ou le nom de
- * the tool appears in the config allowlist), otherwise it is refused without running.
+ * `guarded: true` means the call requires `confirm: true` in its args (or the tool's
+ * name in the config allowlist), otherwise it is refused without running.
  * Guarded tools MUST declare `confirm` in their `inputSchema`.
  */
 export interface ToolDef<Shape extends ZodRawShape = ZodRawShape> {

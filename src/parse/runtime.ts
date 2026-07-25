@@ -12,7 +12,7 @@ const FILE_LINE = /([\w./\\-]+\.lua):(\d+)/;
 
 /**
  * Parses a game log block (already sliced to the right boot) into runtime findings.
- * Une ligne matchant le PATTERN devient un finding ; les lignes `stack traceback`
+ * A line matching PATTERN becomes a finding; `stack traceback` lines
  * that immediately follow are collected into the current finding's `stack`.
  */
 export function parseRuntimeLog(text: string): Finding[] {

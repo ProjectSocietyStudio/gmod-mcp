@@ -21,7 +21,7 @@ function tally(findings: Finding[]): { errors: number; warnings: number } {
   };
 }
 
-/** Tronque un texte long pour le renvoyer sans noyer l'agent. */
+/** Clips long text so a result does not drown the agent. */
 function clip(s: string, max = 8000): string {
   return s.length > max ? s.slice(0, max) + `\n...(${s.length - max} bytes truncated)` : s;
 }
@@ -35,7 +35,7 @@ const lint = defineTool({
   handler: async ({ addon }, ctx) => {
     const r = await lintAddon(ctx.config, addon);
     if (r.code === 2) {
-      return { ok: false, exitCode: 2, error: r.stderr.trim() || "usage/dossier invalide", findings: [] };
+      return { ok: false, exitCode: 2, error: r.stderr.trim() || "invalid usage or directory", findings: [] };
     }
     const findings = parseLintOutput(r.stdout);
     return {

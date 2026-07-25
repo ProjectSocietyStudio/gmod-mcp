@@ -17,7 +17,7 @@ export interface RunResult {
 
 /**
  * Runs a command without a shell (explicit argv) and collects
- * stdout/stderr et le code de sortie. Ne rejette jamais sur un code ≠ 0 :
+ * stdout/stderr and the exit code. Never rejects on a non-zero code:
  * the caller interprets the exit code, since these scripts encode meaning in it.
  */
 export function run(

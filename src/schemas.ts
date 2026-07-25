@@ -44,7 +44,7 @@ export type EventEnvelope = z.infer<typeof EventEnvelope>;
 
 /**
  * Unified finding: either static lint output or a runtime error parsed from the logs.
- * C'est la forme que consomment l'agent et la validation engine.
+ * This is the shape the agent and the validation engine consume.
  */
 export const Finding = z.object({
   source: z.enum(["lint", "runtime"]),

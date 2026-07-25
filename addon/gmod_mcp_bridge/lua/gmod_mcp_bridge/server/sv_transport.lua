@@ -89,7 +89,7 @@ function GMODMCP.Start()
     if running then return end
     running = true
     ensureDirs()
-    GMODMCP.Log("transport fichier actif -> data/" .. BASE)
+    GMODMCP.Log("file transport active -> data/" .. BASE)
     GMODMCP.SendEvent("bridge_up", { version = GMODMCP.Version, map = game.GetMap() })
     -- Fast poll: the file round-trip is local and near-instant.
     timer.Create("gmod_mcp_bridge_poll", 0.25, 0, poll)

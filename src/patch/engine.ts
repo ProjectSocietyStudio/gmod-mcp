@@ -5,16 +5,16 @@ import type { Config } from "../config.js";
 import { run } from "../proc/run.js";
 import type { Patch } from "../schemas.js";
 
-/** Enregistrement interne d'un patch (Patch public + infos de restauration). */
+/** Internal record of a patch (the public Patch plus restore information). */
 interface PatchRecord extends Patch {
   absFile: string;
   backupPath: string;
-  /** Le fichier existait-il avant le patch ? (sinon, restaurer = supprimer). */
+  /** Did the file exist before the patch? If not, restoring means emptying it. */
   existedBefore: boolean;
 }
 
 /**
- * Applique et annule des modifications de fichiers, avec sauvegarde et diff.
+ * Applies and reverts file changes, with a backup and a diff.
  * Locked scope: refuses any target outside the repo root.
  */
 export class PatchEngine {

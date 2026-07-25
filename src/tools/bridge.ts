@@ -131,7 +131,7 @@ export const serverBridgeTools: AnyToolDef[] = [
   }),
   bridgeTool({
     name: "read_convars",
-    description: "Valeurs de convars serveur. Sans `names`, renvoie un sous-ensemble usuel.",
+    description: "Server convar values. Without `names`, returns a common subset.",
     realm: "sv",
     inputSchema: { names: z.array(z.string()).optional() },
   }),

@@ -148,9 +148,9 @@ H.read_timers = function(args)
 end
 
 H.run_console_command = function(args)
-    if not isstring(args.command) then error("command (string) requis") end
+    if not isstring(args.command) then error("command (string) is required") end
     game.ConsoleCommand(args.command .. "\n")
-    return { queued = true, note = "game.ConsoleCommand est mis en file (~0,25 s avant relecture)" }
+    return { queued = true, note = "game.ConsoleCommand is queued; wait about 0.25s before reading the cvar back" }
 end
 
 H.send_debug = function(args)

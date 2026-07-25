@@ -22,13 +22,13 @@ export interface FileBridgeOptions {
 }
 
 /**
- * Transport bridge par **fichiers** dans le sandbox DATA de GMod — le daemon et
- * srcds share a filesystem, so there is no network dependency -- unlike `HTTP()`,
- * which was measured not to reach a localhost daemon from srcds.
+ * **File**-based bridge transport inside GMod's DATA sandbox: the daemon and srcds
+ * share a filesystem, so there is no network dependency -- unlike `HTTP()`, which was
+ * measured not to reach a localhost daemon from srcds.
  *
  * Protocol: the daemon writes `cmd/<id>.json` (atomically, via .tmp then rename); the
  * addon reads it, runs it, writes `res/<id>.json` and deletes the command. Events
- * arrivent en `evt/<n>.json`. Le daemon scanne `res/` et `evt/` par intervalle.
+ * arrive as `evt/<n>.json`. The daemon scans `res/` and `evt/` on an interval.
  *
  * Both realms share the same file channel: `cl` commands are relayed by the server
  * addon to the client over net messages, and the result comes back in `res/`. The
