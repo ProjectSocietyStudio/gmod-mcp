@@ -18,6 +18,13 @@ GMODMCP.Version = "0.3.0"
 -- more than one tick. Shared name across realms so handlers read the same either side.
 GMODMCP.ASYNC = GMODMCP.ASYNC or {}
 
+-- Handlers that must not run without an explicit confirmation. Declared next to each
+-- handler rather than kept as a list somewhere else: `batch` is a single unguarded tool
+-- on the daemon side, so this table is the only thing standing between a batched step and
+-- the gate it should have passed. A separate list would drift the first time someone adds
+-- a handler and forgets it.
+GMODMCP.Guarded = GMODMCP.Guarded or {}
+
 function GMODMCP.Log(msg)
     print("[gmod-mcp] " .. tostring(msg))
 end
@@ -25,6 +32,7 @@ end
 local base = "gmod_mcp_bridge/server/"
 include(base .. "sv_transport.lua")
 include(base .. "sv_handlers.lua")
+include(base .. "sv_world.lua")
 include(base .. "sv_batch.lua")
 include(base .. "sv_test.lua")
 include(base .. "sv_client_relay.lua")

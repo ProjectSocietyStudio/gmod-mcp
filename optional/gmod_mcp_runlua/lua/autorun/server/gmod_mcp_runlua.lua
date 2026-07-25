@@ -14,6 +14,9 @@ if not GMODMCP or not GMODMCP.Handlers then
     return
 end
 
+GMODMCP.Guarded = GMODMCP.Guarded or {}
+GMODMCP.Guarded.run_lua = true
+
 GMODMCP.Handlers.run_lua = function(args, cmd)
     -- Second gate: the daemon only sets confirmed=true after a human approves.
     if not cmd.confirmed then error("run_lua refused: confirmation required") end

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { clientBridgeTools, serverBridgeTools } from "../src/tools/bridge.js";
+import { worldTools } from "../src/tools/world.js";
 import type { AnyToolDef } from "../src/mcp/registry.js";
 
 /**
@@ -23,20 +24,26 @@ const addonRoot = join(
   "lua",
 );
 
-const LUA_SOURCES: Record<"sv" | "cl", string> = {
-  sv: join(addonRoot, "gmod_mcp_bridge", "server", "sv_handlers.lua"),
-  cl: join(addonRoot, "autorun", "client", "gmod_mcp_bridge_cl.lua"),
+const LUA_SOURCES: Record<"sv" | "cl", string[]> = {
+  sv: [
+    join(addonRoot, "gmod_mcp_bridge", "server", "sv_handlers.lua"),
+    join(addonRoot, "gmod_mcp_bridge", "server", "sv_world.lua"),
+  ],
+  cl: [join(addonRoot, "autorun", "client", "gmod_mcp_bridge_cl.lua")],
 };
 
 /** Maps `H.<name> = function(...)` to the argument keys that body reads. */
 function argKeysByHandler(source: string): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
-  // Split on handler definitions; each body runs to the next one or to end of file.
+  // A body runs to its closing `end` at column zero. Slicing to the next handler
+  // instead would swallow whatever sits between them -- world_edit's action table, for
+  // one -- and blame those reads on the preceding handler.
   const starts = [...source.matchAll(/^H\.(\w+)\s*=\s*function/gm)];
-  starts.forEach((match, i) => {
+  starts.forEach((match) => {
     const name = match[1]!;
     const from = match.index!;
-    const to = i + 1 < starts.length ? starts[i + 1]!.index! : source.length;
+    const close = source.slice(from).search(/^end$/m);
+    const to = close === -1 ? source.length : from + close;
     const body = source.slice(from, to);
     const keys = new Set([...body.matchAll(/\bargs\.(\w+)/g)].map((m) => m[1]!));
     out.set(name, keys);
@@ -49,26 +56,43 @@ function declaredKeys(def: AnyToolDef): Set<string> {
 }
 
 describe("TS inputSchema matches the Lua handlers", () => {
-  const bridgeTools = [...serverBridgeTools, ...clientBridgeTools];
+  const bridgeTools = [...serverBridgeTools, ...clientBridgeTools, ...worldTools];
 
   for (const realm of ["sv", "cl"] as const) {
-    const source = readFileSync(LUA_SOURCES[realm], "utf8");
-    const luaHandlers = argKeysByHandler(source);
+    for (const path of LUA_SOURCES[realm]) {
+      const file = path.split("/").pop()!;
+      const source = readFileSync(path, "utf8");
+      const luaHandlers = argKeysByHandler(source);
 
-    it(`finds handlers in the ${realm} Lua source`, () => {
-      expect(luaHandlers.size).toBeGreaterThan(0);
-    });
+      it(`${file}: exposes handlers`, () => {
+        expect(luaHandlers.size).toBeGreaterThan(0);
+      });
 
-    for (const def of bridgeTools.filter((t) => t.realm === realm)) {
-      const read = luaHandlers.get(def.name);
-      // run_lua lives in the optional extension, not in this file.
-      if (!read) continue;
+      for (const [name, read] of luaHandlers) {
+        const def = bridgeTools.find((t) => t.name === name && t.realm === realm);
+        // list_handlers is a bridge internal with no tool of its own.
+        if (!def) continue;
 
-      it(`${def.name}: every args key the Lua reads is declared in TS`, () => {
-        const declared = declaredKeys(def);
-        // `player` targets the relay, not the handler, so it is legal everywhere.
-        const missing = [...read].filter((k) => k !== "player" && !declared.has(k));
-        expect(missing).toEqual([]);
+        it(`${name}: every args key the Lua reads is declared in TS`, () => {
+          const declared = declaredKeys(def);
+          // `player` targets the relay, not the handler, so it is legal everywhere.
+          const missing = [...read].filter((k) => k !== "player" && !declared.has(k));
+          expect(missing).toEqual([]);
+        });
+      }
+
+      // Helpers outside a handler body -- world_edit's per-action table, for instance --
+      // read args too, and per-handler scoping cannot see them. Checking the file as a
+      // whole is coarser but catches the drift that matters: a key nothing declares.
+      it(`${file}: every args key read anywhere is declared by some tool in this file`, () => {
+        const declaredHere = new Set(
+          [...luaHandlers.keys()]
+            .flatMap((n) => bridgeTools.filter((t) => t.name === n && t.realm === realm))
+            .flatMap((t) => [...declaredKeys(t)]),
+        );
+        const readAnywhere = new Set([...source.matchAll(/\bargs\.(\w+)/g)].map((m) => m[1]!));
+        const orphans = [...readAnywhere].filter((k) => k !== "player" && !declaredHere.has(k));
+        expect(orphans).toEqual([]);
       });
     }
   }

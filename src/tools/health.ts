@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { defineTool } from "../mcp/registry.js";
 import type { ToolContext } from "../mcp/registry.js";
 import { clientBridgeTools, serverBridgeTools } from "./bridge.js";
+import { worldTools } from "./world.js";
 import { VERSION } from "../version.js";
 
 /** Short: a probe must report "srcds is down" quickly, not stall for the full default. */
@@ -32,7 +33,8 @@ async function probeBridge(ctx: ToolContext): Promise<Record<string, unknown>> {
 
     // Client tools are relayed by the server addon but registered on the client, so the
     // server's handler table legitimately does not list them.
-    const missing = serverBridgeTools.map((t) => t.name).filter((n) => !registered.has(n));
+    const declared = [...serverBridgeTools, ...worldTools].map((t) => t.name);
+    const missing = declared.filter((n) => !registered.has(n));
 
     return {
       ok: true,

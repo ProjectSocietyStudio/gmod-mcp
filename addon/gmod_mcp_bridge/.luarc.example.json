@@ -20,7 +20,7 @@
     "maxPreload": 5000
   },
   "diagnostics": {
-    "globals": ["GM", "GAMEMODE", "GMODMCP", "CAMI", "DarkRP", "RPExtraTeams", "TEAM_"],
+    "globals": ["GM", "GAMEMODE", "GMODMCP", "CAMI", "DarkRP", "RPExtraTeams", "TEAM_", "R"],
     "disable": ["lowercase-global"],
     "neededFileStatus": {
       "undefined-global": "Any",

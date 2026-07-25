@@ -11,10 +11,11 @@ local MAX_STEPS = 32
 local MAX_SETTLE = 2000
 
 -- Guarded tools must not become reachable through a batch. `batch` is a single unguarded
--- definition on the daemon side, so without this check a run_lua step would ride in
+-- definition on the daemon side, so without this check a guarded step would ride in
 -- without the confirmation its own gate demands. The daemon checks too; this is the half
--- that still holds if the daemon is ever wrong.
-local GUARDED = { run_lua = true }
+-- that still holds if the daemon is ever wrong. The set lives in GMODMCP.Guarded, filled
+-- in beside each handler, so adding a handler and forgetting the flag is a local mistake
+-- rather than a silent hole here.
 
 local function finish(state)
     state.done(true, {
@@ -41,7 +42,7 @@ local function runStep(step, confirmed)
     if not istable(step) or not isstring(step.tool) then
         return false, nil, "step must be a table with a string `tool`"
     end
-    if GUARDED[step.tool] and not confirmed then
+    if GMODMCP.Guarded[step.tool] and not confirmed then
         return false, nil, "guarded tool in batch: " .. step.tool .. " requires confirmation"
     end
 
