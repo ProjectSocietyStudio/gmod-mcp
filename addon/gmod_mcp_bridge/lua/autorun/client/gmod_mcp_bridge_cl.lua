@@ -35,25 +35,80 @@ local CHUNK = 7000
 local perFrame = CreateClientConVar("gmod_mcp_chunks_per_frame", "1", true, false,
     "Chunks per frame when answering the bridge. Raise cautiously: overflowing the reliable channel silently kills every client tool.", 1, 8)
 
+-- Hard ceiling on how much one result may push up the reliable channel.
+--
+-- Measured 2026-07-25, the hard way: a full-screen capture at quality 80 came to 424 KB,
+-- 62 chunks, and timed the client out of the server -- the exact failure the chunking
+-- above was written to fix, reached from the other direction. A full-screen q70 capture
+-- (100 KB, 15 chunks) had gone through fine minutes earlier, so the ceiling sits between
+-- them; 48 is under the smallest known-bad figure with room to spare. Refusing loudly
+-- beats disconnecting the human: the caller can lower scale or quality, and the default
+-- half-scale capture is about six chunks.
+local MAX_CHUNKS = 48
+
+-- Results are chunked ONE AT A TIME.
+--
+-- Each result used to get its own timer, so several in flight summed on the same reliable
+-- channel and the per-frame pacing stopped meaning anything -- three concurrent results
+-- at one chunk each per frame is three chunks per frame. That is easy to reach: a caller
+-- that retries a command it thinks was lost has two captures in flight, and the second is
+-- what tips the channel over. A single drain keeps the pacing true however many commands
+-- arrive at once.
+local queue = {}
+local draining = false
+
+local function drain()
+    if draining or #queue == 0 then return end
+    draining = true
+
+    timer.Create("gmod_mcp_drain", 0, 0, function()
+        -- The netchannel dies before the timer does. Without this the remaining chunks
+        -- keep firing into nothing, which is what "Client sending to server with no
+        -- netchannel!" in the client console means.
+        if not IsValid(LocalPlayer()) then
+            queue = {}
+            draining = false
+            timer.Remove("gmod_mcp_drain")
+            return
+        end
+
+        local rate = math.Clamp(perFrame:GetInt(), 1, 8)
+        for _ = 1, rate do
+            local job = queue[1]
+            if not job then
+                draining = false
+                timer.Remove("gmod_mcp_drain")
+                return
+            end
+            job.sent = job.sent + 1
+            net.Start("gmod_mcp_cl_res")
+            net.WriteString(job.id)
+            net.WriteUInt(job.sent, 16)
+            net.WriteUInt(job.total, 16)
+            net.WriteString(string.sub(job.payload, (job.sent - 1) * CHUNK + 1, job.sent * CHUNK))
+            net.SendToServer()
+            if job.sent >= job.total then table.remove(queue, 1) end
+        end
+    end)
+end
+
 local function sendResult(id, ok, data, err)
     local payload = util.TableToJSON({ id = id, ok = ok, data = data, error = err })
     local total = math.max(1, math.ceil(#payload / CHUNK))
-    local rate = math.Clamp(perFrame:GetInt(), 1, 8)
 
-    local i = 0
-    local timerName = "gmod_mcp_send_" .. id
-    timer.Create(timerName, 0, math.ceil(total / rate), function()
-        for _ = 1, rate do
-            if i >= total then return end
-            i = i + 1
-            net.Start("gmod_mcp_cl_res")
-            net.WriteString(id)
-            net.WriteUInt(i, 16)
-            net.WriteUInt(total, 16)
-            net.WriteString(string.sub(payload, (i - 1) * CHUNK + 1, i * CHUNK))
-            net.SendToServer()
-        end
-    end)
+    if total > MAX_CHUNKS then
+        payload = util.TableToJSON({
+            id = id,
+            ok = false,
+            error = string.format(
+                "result too large: %d KB would need %d chunks (limit %d). Lower scale or quality, or capture a region.",
+                math.floor(#payload / 1024), total, MAX_CHUNKS),
+        })
+        total = math.max(1, math.ceil(#payload / CHUNK))
+    end
+
+    queue[#queue + 1] = { id = id, payload = payload, total = total, sent = 0 }
+    drain()
 end
 
 -- ----------------------------------------------------------------- handlers ---

@@ -203,7 +203,7 @@ export const clientBridgeTools: AnyToolDef[] = [
   bridgeTool({
     name: "capture_screen",
     description:
-      "Captures the client's screen on the next frame and returns it as a viewable image. Every byte travels in 7KB chunks paced by frame, so a full-resolution capture takes seconds and dominates any act-then-look loop: the default half scale at quality 60 is 4-6x cheaper and still legible for a Derma layout. Pass region (from inspect_panel's x/y/w/h) to capture just one panel. Requires an active GMod client.",
+      "Captures the client's screen on the next frame and returns it as a viewable image. Every byte travels in 7KB chunks paced by frame, so a full-resolution capture takes seconds and dominates any act-then-look loop: the default half scale at quality 60 is 4-6x cheaper and still legible for a Derma layout. Pass region (from read_panels' screen_x/screen_y) to capture just one panel. A capture that would exceed the client's channel budget is refused with its size rather than sent: a full-screen quality-80 capture measured 424KB and timed the client out of the server. Requires an active GMod client.",
     realm: "cl",
     inputSchema: {
       scale: z
