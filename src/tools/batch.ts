@@ -12,6 +12,11 @@ const Step = z.object({
   tool: z.string().min(1),
   args: z.record(z.unknown()).optional(),
 });
+// Any arg value may instead be {"__step": n, "get": "field"}, resolved from step n's
+// result before the step runs. Without it, spawning something and then acting on it needs
+// two round trips -- the caller cannot know the EntIndex until the spawn has answered,
+// which is the round trip batching exists to remove.
+
 type Step = z.infer<typeof Step>;
 
 /**
@@ -57,7 +62,7 @@ function validateSteps(
 export const batchTool = defineTool({
   name: "batch",
   description:
-    "Runs up to 32 server tools in ONE bridge round trip instead of one per call. A round trip costs about 0.4s, so any act-then-look sequence is dominated by transport unless it is batched. Each step reports its own ok/data/error; a step failing is data, not a transport error. settleMs pauses between steps so a step observes what the previous one did.",
+    "Runs up to 32 server tools in ONE bridge round trip instead of one per call. A round trip costs about 0.4s, so any act-then-look sequence is dominated by transport unless it is batched. Each step reports its own ok/data/error; a step failing is data, not a transport error. IMPORTANT: with settleMs 0 every step runs in the SAME server tick, and some engine effects only land at the end of a frame -- a removed entity still reads as valid. Set settleMs (100 is usually enough) whenever a step must observe what an earlier one did. Any arg value may be {\"__step\": 1, \"get\": \"index\"} to read a field from an earlier step's result, so spawn-then-act still costs one round trip.",
   realm: "sv",
   inputSchema: {
     steps: z.array(Step).min(1).max(MAX_STEPS),

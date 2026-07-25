@@ -38,7 +38,44 @@ local function skipRest(state, from)
     end
 end
 
-local function runStep(step, confirmed)
+-- Resolves {"__step": n, "get": "index"} against an earlier step's data.
+--
+-- Without this, spawning something and then acting on it takes two round trips, because
+-- the caller cannot know the EntIndex until the spawn has answered -- which is exactly
+-- the round trip batching exists to remove.
+--
+-- It walks nested tables. A first version substituted only at the top level, which read
+-- as a reasonable simplification and broke on the most natural use there is: force_hook
+-- takes a list of tagged values, so the reference is always nested one deeper
+-- ({"__ent": {"__step": 1, "get": "index"}}). The depth cap is a cycle guard, not a
+-- design statement.
+local MAX_REF_DEPTH = 8
+
+local function resolveRefs(value, results, depth)
+    if not istable(value) then return value end
+    depth = depth or 0
+    if depth > MAX_REF_DEPTH then error("argument nesting is too deep") end
+
+    if value.__step ~= nil then
+        local n = tonumber(value.__step)
+        local ref = n and results[n]
+        if not ref then error("__step " .. tostring(value.__step) .. ": no such earlier step") end
+        if not ref.ok then error("__step " .. n .. " failed; cannot read its result") end
+        if value.get == nil then return ref.data end
+        if not istable(ref.data) then error("__step " .. n .. " returned no table to read `get` from") end
+        local got = ref.data[value.get]
+        if got == nil then error("__step " .. n .. " has no field '" .. tostring(value.get) .. "'") end
+        return got
+    end
+
+    local out = {}
+    for k, v in pairs(value) do
+        out[k] = resolveRefs(v, results, depth + 1)
+    end
+    return out
+end
+
+local function runStep(step, confirmed, results)
     if not istable(step) or not isstring(step.tool) then
         return false, nil, "step must be a table with a string `tool`"
     end
@@ -51,8 +88,16 @@ local function runStep(step, confirmed)
         return false, nil, "unknown handler: " .. step.tool
     end
 
-    local fakeCmd = { id = step.tool, args = step.args or {}, confirmed = confirmed }
-    local ok, res = pcall(handler, step.args or {}, fakeCmd)
+    local resolved = step.args
+    if resolved then
+        local okRef, outcome = pcall(resolveRefs, resolved, results)
+        if not okRef then return false, nil, tostring(outcome) end
+        resolved = outcome
+    end
+    resolved = resolved or {}
+
+    local fakeCmd = { id = step.tool, args = resolved, confirmed = confirmed }
+    local ok, res = pcall(handler, resolved, fakeCmd)
     if not ok then return false, nil, tostring(res) end
 
     -- A handler that answers later cannot be sequenced here: it would need a per-step
@@ -68,7 +113,7 @@ local function advance(state)
     while state.i < #state.steps do
         state.i = state.i + 1
         local step = state.steps[state.i]
-        local ok, data, err = runStep(step, state.confirmed)
+        local ok, data, err = runStep(step, state.confirmed, state.results)
 
         state.results[#state.results + 1] = {
             i = state.i,
@@ -84,8 +129,10 @@ local function advance(state)
             return finish(state)
         end
 
-        -- The pause is what makes an act-then-look batch honest: without it the next
-        -- step observes the frame before the previous one landed.
+        -- The pause is what makes an act-then-look batch honest. Without it every step
+        -- runs in the same tick, and engine effects that land at end of frame have not
+        -- happened yet: Entity:Remove() is deferred, so a step reading the entity back
+        -- still finds it valid and the agent concludes the removal failed.
         if state.settle > 0 and state.i < #state.steps then
             timer.Simple(state.settle / 1000, function() advance(state) end)
             return
