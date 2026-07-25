@@ -203,9 +203,21 @@ export const clientBridgeTools: AnyToolDef[] = [
   bridgeTool({
     name: "capture_screen",
     description:
-      "Captures the client's screen on the next frame and returns it as a viewable image. Requires an active GMod client.",
+      "Captures the client's screen on the next frame and returns it as a viewable image. Every byte travels in 7KB chunks paced by frame, so a full-resolution capture takes seconds and dominates any act-then-look loop: the default half scale at quality 60 is 4-6x cheaper and still legible for a Derma layout. Pass region (from inspect_panel's x/y/w/h) to capture just one panel. Requires an active GMod client.",
     realm: "cl",
-    inputSchema: {},
+    inputSchema: {
+      scale: z
+        .number()
+        .min(0.1)
+        .max(1)
+        .default(0.5)
+        .describe("Downscale factor applied on the client before encoding. Use 1 to read small text."),
+      quality: z.number().int().min(1).max(100).default(60).describe("JPEG quality."),
+      region: z
+        .object({ x: z.number().int(), y: z.number().int(), w: z.number().int(), h: z.number().int() })
+        .optional()
+        .describe("Screen region to capture. Free: render.Capture takes it natively."),
+    },
     // Lift the base64 into an image content block. Left in the JSON body it would be
     // billed as text and still be invisible to the model -- see IMAGE_KEY.
     transform: (res) => {
