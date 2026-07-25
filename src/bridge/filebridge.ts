@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { AuditLog } from "../logger.js";
 import { EventEnvelope, ResultEnvelope } from "../schemas.js";
 import type { CommandEnvelope } from "../schemas.js";
-import type { Bridge } from "./types.js";
+import type { Bridge, EnqueueOptions } from "./types.js";
 
 interface Pending {
   resolve: (r: ResultEnvelope) => void;
@@ -60,18 +60,19 @@ export class FileBridge extends EventEmitter implements Bridge {
     realm: "sv" | "cl",
     tool: string,
     args: Record<string, unknown>,
-    opts: { confirmed?: boolean } = {},
+    opts: EnqueueOptions = {},
   ): Promise<ResultEnvelope> {
     // sv and cl share the channel; the server addon routes cl commands to the client.
     const id = randomUUID();
     const cmd: CommandEnvelope = { id, tool, args, realm, ...(opts.confirmed ? { confirmed: true } : {}) };
+    const timeoutMs = opts.timeoutMs ?? this.commandTimeoutMs;
 
     const promise = new Promise<ResultEnvelope>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         this.safeDelete(join(this.cmdDir, `${id}.json`)); // drop the unconsumed command
-        reject(new Error(`timeout: no result for ${tool} after ${this.commandTimeoutMs}ms -- is srcds running with the addon mounted?`));
-      }, this.commandTimeoutMs);
+        reject(new Error(`timeout: no result for ${tool} after ${timeoutMs}ms -- is srcds running with the addon mounted?`));
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
     });
 

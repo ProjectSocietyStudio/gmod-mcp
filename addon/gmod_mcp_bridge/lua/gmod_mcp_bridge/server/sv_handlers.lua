@@ -6,6 +6,19 @@
 -- gmod_mcp_runlua addon, isolated because glua-audit forbids dynamic execution.
 local H = GMODMCP.Handlers
 
+-- Which handlers this server actually registered. A tool declared on the daemon side
+-- but missing here fails with "unknown handler" only after a full bridge round trip, and
+-- a whole include left out of gmod_mcp_bridge.lua registers nothing while raising
+-- nothing. This makes the gap readable from `health` instead of inferred from a timeout.
+H.list_handlers = function()
+    local out = {}
+    for name in pairs(GMODMCP.Handlers) do
+        out[#out + 1] = name
+    end
+    table.sort(out)
+    return { count = #out, handlers = out, version = GMODMCP.Version }
+end
+
 H.read_runtime = function()
     return {
         map = game.GetMap(),

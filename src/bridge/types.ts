@@ -1,9 +1,20 @@
 import type { EventEmitter } from "node:events";
 import type { ResultEnvelope } from "../schemas.js";
 
+/** Per-command options shared by every bridge transport. */
+export interface EnqueueOptions {
+  confirmed?: boolean;
+  /**
+   * Overrides the transport's default round-trip timeout. Probes want to fail fast
+   * rather than stall a caller for the full default when srcds is simply down; long
+   * batches want the opposite.
+   */
+  timeoutMs?: number;
+}
+
 /**
- * Interface commune des transports bridge (HTTP ou fichier). Les outils sv/cl
- * depend only on this, so the transport can change without touching them.
+ * The interface every bridge transport implements. The sv/cl tools depend only on
+ * this, so the transport can change without touching them.
  * Emits `"event"` (EventEnvelope) for asynchronous events coming from the game.
  */
 export interface Bridge extends EventEmitter {
@@ -11,7 +22,7 @@ export interface Bridge extends EventEmitter {
     realm: "sv" | "cl",
     tool: string,
     args: Record<string, unknown>,
-    opts?: { confirmed?: boolean },
+    opts?: EnqueueOptions,
   ): Promise<ResultEnvelope>;
   close(): Promise<void>;
 }

@@ -17,7 +17,7 @@ end
 GMODMCP.Handlers.run_lua = function(args, cmd)
     -- Second gate: the daemon only sets confirmed=true after a human approves.
     if not cmd.confirmed then error("run_lua refused: confirmation required") end
-    if not isstring(args.code) then error("code (string) requis") end
+    if not isstring(args.code) then error("code (string) is required") end
 
     local fn = CompileString(args.code, "gmod_mcp/run_lua", false)
     if not isfunction(fn) then error("compilation: " .. tostring(fn)) end
