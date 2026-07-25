@@ -24,9 +24,19 @@ end
 -- never arrive: the tool only failed once its own timeout expired, and the half-received
 -- chunks stayed in memory forever. An agent iterating with a human in the game hits this
 -- every time that human crashes, so the failure has to be immediate and named.
+--
+-- Both are also swept on a timer. Completion and PlayerDisconnected cover the cases where
+-- something happens; they do NOT cover the daemon giving up on its side, which drops the
+-- command and stops caring while this table keeps the entry forever. That was a slow leak
+-- when every command was one tool call; batching multiplies client ids, so it needs a
+-- sweep rather than a note.
 local chunks = {}
 local pending = {}
 local rlReset, rlCount = 0, 0
+
+-- Slightly above the daemon's default 30s round-trip timeout: by then nobody is waiting
+-- for this result, so writing one would only leave an orphan file in res/.
+local STALE_AFTER = 45
 
 local function resolveFailure(id, err)
     chunks[id] = nil
@@ -42,7 +52,7 @@ function GMODMCP.RelayToClient(cmd)
         GMODMCP.WriteResult(cmd.id, { id = cmd.id, ok = false, error = "no client connected (realm=cl tool)" })
         return
     end
-    pending[cmd.id] = ply
+    pending[cmd.id] = { ply = ply, at = RealTime() }
     net.Start("gmod_mcp_cl_cmd")
     net.WriteString(cmd.id)
     net.WriteString(cmd.tool)
@@ -54,9 +64,21 @@ end
 -- A client that leaves can no longer answer. Fail its in-flight commands now rather than
 -- making the daemon wait out a timeout, and drop the partial chunks it will never finish.
 hook.Add("PlayerDisconnected", "gmod_mcp_bridge.relay_cleanup", function(ply)
-    for id, target in pairs(pending) do
-        if target == ply or not IsValid(target) then
+    for id, rec in pairs(pending) do
+        if rec.ply == ply or not IsValid(rec.ply) then
             resolveFailure(id, "client disconnected before answering (realm=cl tool)")
+        end
+    end
+end)
+
+-- Drops commands nobody is waiting for any more. Without it a daemon-side timeout leaves
+-- the entry and its half-received chunks in memory for the rest of the map.
+timer.Create("gmod_mcp_bridge.relay_sweep", 15, 0, function()
+    local now = RealTime()
+    for id, rec in pairs(pending) do
+        if now - rec.at > STALE_AFTER then
+            chunks[id] = nil
+            pending[id] = nil
         end
     end
 end)
