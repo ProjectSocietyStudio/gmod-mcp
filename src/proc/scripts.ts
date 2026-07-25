@@ -111,17 +111,57 @@ export function packageAddon(config: Config, addon: string): Promise<RunResult> 
 }
 
 /**
+ * Marker the engine prints once per startup. Used to find the boot boundary from the
+ * log's own content, which is the only method that works when the daemon did not start
+ * the server itself.
+ */
+const BOOT_MARKER = "Initializing Steam libraries";
+
+/**
+ * Byte offset of the last boot marker in the log, or undefined when none is present.
+ * Searched over the raw bytes: the game log contains NUL bytes, and decoding it as utf8
+ * first would be both wasteful and lossy.
+ */
+function lastBootMarkerOffset(buf: Buffer): number | undefined {
+  const idx = buf.lastIndexOf(BOOT_MARKER, undefined, "utf8");
+  return idx === -1 ? undefined : idx;
+}
+
+/**
  * Reads the game log from the boot boundary, or the whole file when `sinceBoot` is
- * false or no boot is known. Read as binary then decoded as utf8; NUL bytes are kept
- * as-is and cleaned up by the runtime parser.
+ * false. Read as binary then decoded as utf8; NUL bytes are kept as-is and cleaned up
+ * by the runtime parser.
+ *
+ * The boundary is taken from the LOG ITSELF, falling back to the offset recorded by
+ * startServer. The recorded offset alone is not trustworthy: it is only written when
+ * the daemon starts the server, so any other start -- a shell invocation of
+ * start-server.sh, a service unit, a manual restart -- leaves it pointing into a
+ * previous run.
+ *
+ * That failure was silent and actively misleading. `sinceBoot: true` would return
+ * errors from an earlier boot as though they were current, which is precisely the trap
+ * this function exists to prevent: garrysmod/console.log accumulates across restarts,
+ * unlike srcds/console.log which is truncated on each start.
+ *
+ * When both are available the later one wins. A recorded offset can legitimately sit
+ * past the last marker -- the daemon captures the file size before launching, and the
+ * engine prints the marker shortly after -- so taking the maximum keeps the tighter,
+ * more recent bound in either direction.
  */
 export function readGameLog(config: Config, sinceBoot: boolean): string {
   const p = paths(config);
   if (!existsSync(p.gameLog)) return "";
   const buf = readFileSync(p.gameLog);
   if (!sinceBoot) return buf.toString("utf8");
-  const boot = readBootState(config);
-  const start = boot ? Math.min(boot.offset, buf.length) : 0;
+
+  const marker = lastBootMarkerOffset(buf);
+  const recorded = readBootState(config)?.offset;
+
+  const candidates = [marker, recorded].filter(
+    (n): n is number => typeof n === "number" && n >= 0 && n <= buf.length,
+  );
+  const start = candidates.length > 0 ? Math.max(...candidates) : 0;
+
   return buf.subarray(start).toString("utf8");
 }
 
