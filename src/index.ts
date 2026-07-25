@@ -34,7 +34,18 @@ async function main(): Promise<void> {
 
   // File-based bridge transport, shared with srcds through GMod's DATA sandbox.
   const gmodDataDir = join(config.repoRoot, "srcds", "garrysmod", "data", "gmod_mcp");
-  const bridge = new FileBridge({ dir: gmodDataDir, audit });
+  // version/repoRoot end up in the transport lock file, so a second daemon can name who
+  // holds it instead of reporting a bare timeout.
+  const bridge = new FileBridge({ dir: gmodDataDir, audit, version: VERSION, repoRoot: config.repoRoot });
+  const transportState = bridge.status();
+  if (!transportState.owns) {
+    // stderr only -- stdout is the MCP protocol channel. The tools repeat this on every
+    // call, which is where a human debugging a timeout will actually see it.
+    process.stderr.write(
+      `gmod-mcp: WARNING -- transport directory already owned by PID ${transportState.lockedBy?.pid ?? "?"}; ` +
+        `bridge tools are disabled in this daemon (see ${transportState.lockPath})\n`,
+    );
+  }
 
   const registry = new ToolRegistry();
   registry.registerAll(allTools);

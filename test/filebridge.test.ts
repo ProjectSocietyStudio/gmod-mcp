@@ -1,4 +1,5 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -85,9 +86,72 @@ describe("FileBridge", () => {
     expect(ev.payload).toMatchObject({ msg: "boom" });
   });
 
-  it("times out when no addon answers", async () => {
+  it("times out when no addon answers, and blames the link that is actually broken", async () => {
     const solo = new FileBridge({ dir: mkdtempSync(join(tmpdir(), "gmod-mcp-fb2-")), audit, commandTimeoutMs: 150 });
-    await expect(solo.enqueue("sv", "read_runtime", {})).rejects.toThrow(/timeout/);
+    // The command file is still in cmd/, so the diagnosis must be "nobody is polling" and
+    // not the old catch-all that accused srcds while a second daemon ate the results.
+    await expect(solo.enqueue("sv", "read_runtime", {})).rejects.toThrow(/never picked up/);
     await solo.close();
+  });
+
+  it("reports its transport state", () => {
+    const s = bridge.status();
+    expect(s.owns).toBe(true);
+    expect(s.uncorrelatedResults).toBe(0);
+    expect(typeof s.lastAddonContactMsAgo === "number").toBe(true);
+  });
+});
+
+/**
+ * The failure of 2026-07-25: two daemons on one transport directory. The protocol consumes
+ * `res/`, so the second daemon deleted results the first was waiting for and every tool
+ * timed out with a perfectly healthy game.
+ */
+describe("FileBridge single-instance lock", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gmod-mcp-lock-"));
+  let first: FileBridge;
+
+  beforeAll(() => {
+    first = new FileBridge({ dir, audit, commandTimeoutMs: 200 });
+  });
+  afterAll(async () => {
+    await first.close();
+  });
+
+  it("gives the directory to the first daemon only", async () => {
+    const second = new FileBridge({ dir, audit, commandTimeoutMs: 200 });
+    expect(first.status().owns).toBe(true);
+    expect(second.status().owns).toBe(false);
+    expect(second.status().lockedBy?.pid).toBe(process.pid);
+
+    // Refused before writing anything: an unanswerable command would still run in the game.
+    await expect(second.enqueue("sv", "read_runtime", {})).rejects.toThrow(/already owns the transport/);
+    expect(readdirSync(join(dir, "cmd"))).toHaveLength(0);
+
+    await second.close();
+    // Closing the loser must not release the winner's lock.
+    expect(existsSync(join(dir, "daemon.lock"))).toBe(true);
+  });
+
+  it("never deletes a res/ file it did not ask for", async () => {
+    const foreign = join(dir, "res", "not-mine.json");
+    writeFileSync(foreign, JSON.stringify({ id: "not-mine", ok: true, data: {} }));
+    await new Promise((r) => setTimeout(r, 500)); // several scans
+    expect(existsSync(foreign)).toBe(true);
+    expect(first.status().uncorrelatedResults).toBeGreaterThan(0);
+    rmSync(foreign, { force: true });
+  });
+
+  it("reclaims a lock left behind by a dead daemon", async () => {
+    const dir2 = mkdtempSync(join(tmpdir(), "gmod-mcp-stale-"));
+    // A process that has certainly exited: spawnSync returns its pid after it is reaped.
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+    writeFileSync(
+      join(dir2, "daemon.lock"),
+      JSON.stringify({ pid: dead, startedAt: new Date().toISOString() }),
+    );
+    const b = new FileBridge({ dir: dir2, audit, commandTimeoutMs: 100 });
+    expect(b.status().owns).toBe(true);
+    await b.close();
   });
 });

@@ -22,11 +22,18 @@ const PROBE_TIMEOUT_MS = 3_000;
 async function probeBridge(ctx: ToolContext): Promise<Record<string, unknown>> {
   if (!ctx.bridge) return { ok: false, error: "bridge transport not started" };
 
+  // Transport state first, and unconditionally: when a second daemon owns the directory
+  // the probe below cannot even run, and its error is the only thing worth reading.
+  const transport = ctx.bridge.status?.();
+  if (transport && !transport.owns) {
+    return { ok: false, transport, error: "this daemon does not own the transport directory" };
+  }
+
   try {
     const res = await ctx.bridge.enqueue("sv", "list_handlers", {}, {
       timeoutMs: PROBE_TIMEOUT_MS,
     });
-    if (!res.ok) return { ok: false, error: res.error ?? "bridge-side failure" };
+    if (!res.ok) return { ok: false, transport, error: res.error ?? "bridge-side failure" };
 
     const data = (res.data ?? {}) as { handlers?: unknown; version?: unknown };
     const registered = new Set(Array.isArray(data.handlers) ? (data.handlers as string[]) : []);
@@ -38,13 +45,14 @@ async function probeBridge(ctx: ToolContext): Promise<Record<string, unknown>> {
 
     return {
       ok: true,
+      transport,
       addonVersion: data.version,
       registered: [...registered].sort(),
       missingServerHandlers: missing,
       clientToolsDeclared: clientBridgeTools.map((t) => t.name),
     };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, transport, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -56,7 +64,7 @@ async function probeBridge(ctx: ToolContext): Promise<Record<string, unknown>> {
 export const healthTool = defineTool({
   name: "health",
   description:
-    "gmod-mcp daemon status: version, detected repo root, presence of the tools/ scripts, state directory. Also probes the addon (3s) and reports any server handler the daemon declares but the game has not registered.",
+    "gmod-mcp daemon status: version, detected repo root, presence of the tools/ scripts, state directory. Also probes the addon (3s) and reports the transport state -- whether this daemon owns the shared directory (a second Claude Code session starts a second daemon, which breaks every bridge tool), what is in flight, and any server handler the daemon declares but the game has not registered.",
   realm: "local",
   inputSchema: {},
   handler: async (_args, ctx) => {

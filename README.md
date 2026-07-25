@@ -50,6 +50,26 @@ the addon reads it, runs it, writes `res/<id>.json` and deletes the command. Eve
 errors, `bridge_up`) arrive as `evt/<n>.json`. The daemon polls `res/` and `evt/`. No port, no
 token, no handshake.
 
+**One daemon per transport directory**, enforced by `daemon.lock` (PID inside, stale locks
+reclaimed). The protocol *consumes* `res/`, so a second daemon reading the same directory
+deletes results the first one is waiting for: the command really ran, the result really was
+written, and the caller still times out. That is what happens the moment a second Claude Code
+session is opened on the same repo — measured 2026-07-25, and it cost forty minutes because
+the symptom accuses the game. Every bridge tool timed out while srcds was healthy and the
+addon mounted; reconnecting the client and restarting the server changed nothing, since the
+interfering state lived in a third process. Diagnose it with:
+
+```bash
+ps -eo pid,etime,args | grep gmod-mcp/dist/index.js   # more than one line is the bug
+```
+
+A daemon that cannot take the lock keeps its MCP tools but touches nothing: no scanner, no
+commands written, and every bridge call refuses with the owner's PID. `health` reports the
+same under `bridge.transport`. A `res/` file matching no in-flight command is now left alone
+for a grace period rather than deleted on sight — blind cleanup is what turned coexistence
+into an outage — and the count of such files is reported, because on a single-daemon setup it
+should be zero.
+
 **Client realm.** The daemon writes a `cl` command down the same file channel; the server addon
 routes it to the client over a net message; the client runs it and sends the result back, in
 chunks reassembled server-side into `res/`. No HTTP, and the client can be on any machine as
@@ -102,7 +122,10 @@ NUL-safe log reads.
 
 `health` also asks the addon which handlers it registered and reports any the daemon
 declares but the game does not have. That gap used to surface only as an "unknown handler"
-after a full round trip, or — when a whole `include` was missing — not at all.
+after a full round trip, or — when a whole `include` was missing — not at all. It reports the
+transport state alongside: whether this daemon owns the directory and who holds it otherwise,
+what is in flight, how long since the addon last answered, and how many `res/` files matched
+nothing of ours. Start every "nothing responds" investigation there.
 
 `capture_screen` returns a real image content block. Returned as text, a base64 JPEG is
 billed to the model token by token and still cannot be looked at, so the "see" half of an
