@@ -56,11 +56,23 @@ chunks reassembled server-side into `res/`. No HTTP, and the client can be on an
 long as it is **connected to the server**. The target is the first player, or `args.player`
 (SteamID).
 
-Chunks are small and paced one per frame. This matters: an earlier version pushed 60 KB chunks
-in a single frame, which overflowed the client-to-server reliable channel (`send reliable
-stream overflow`) and eventually timed the client out. That failure is persistent and silent —
-once the channel is swamped, *no* net message from that client gets through, so every client
-tool times out and the relay looks broken when it has merely been flooded.
+Chunks are small and paced one per frame, drained one result at a time, and capped at 48
+chunks per result. All three came from the same failure, met twice.
+
+An early version pushed 60 KB chunks in a single frame, which overflowed the client-to-server
+reliable channel (`send reliable stream overflow`) and timed the client out. That failure is
+persistent and silent — once the channel is swamped, *no* net message from that client gets
+through, so every client tool times out and the relay looks broken when it has merely been
+flooded.
+
+Per-frame pacing alone was not enough. Measured on a real player: a full-screen capture at
+quality 80 came to 424 KB and 62 chunks and dropped them from the server, while a full-screen
+q70 capture (100 KB, 15 chunks) had gone through fine minutes earlier. Two things were wrong.
+Each result had its own timer, so several in flight summed on the same channel and the pacing
+stopped meaning anything — a caller retrying a command it believes was lost has two captures
+in flight, and the second is what tips it over. And nothing bounded a single result. Now one
+drain serialises every result, and anything over 48 chunks is refused with its size and a
+suggestion instead of sent. The default half-scale capture is about six chunks.
 
 ## Iteration loop
 
