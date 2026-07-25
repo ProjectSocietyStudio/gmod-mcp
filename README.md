@@ -110,10 +110,17 @@ Every key is optional (see `config.example.json`):
 {
   "repoRoot": ".",
   "addons": ["gmod_mcp_bridge"],
+  "clientWaitMs": 30000,
   "toolAllowlist": [],
   "plugins": []
 }
 ```
+
+`clientWaitMs` is how long a client-realm call keeps retrying while the client is absent.
+That realm needs a human connected, and humans crash, alt-tab and reconnect; retrying lets an
+agent resume when they come back instead of failing the moment they drop. Set it to 0 to fail
+fast. Server-realm calls ignore it — srcds does not come and go mid-session, so a failure there
+is a real one.
 
 ## Plugins
 

@@ -17,12 +17,32 @@ local function targetPlayer(args)
     return player.GetAll()[1]
 end
 
+-- Reassembly of chunked client results, and the commands still awaiting one.
+--
+-- Both are keyed by command id so a disconnect can resolve them. Without this, a client
+-- that crashed or timed out mid-answer left the daemon waiting for a result that could
+-- never arrive: the tool only failed once its own timeout expired, and the half-received
+-- chunks stayed in memory forever. An agent iterating with a human in the game hits this
+-- every time that human crashes, so the failure has to be immediate and named.
+local chunks = {}
+local pending = {}
+local rlReset, rlCount = 0, 0
+
+local function resolveFailure(id, err)
+    chunks[id] = nil
+    pending[id] = nil
+    GMODMCP.WriteResult(id, { id = id, ok = false, error = err })
+end
+
 function GMODMCP.RelayToClient(cmd)
     local ply = targetPlayer(cmd.args)
     if not IsValid(ply) then
+        -- Distinct from a disconnect mid-command: nobody was there to begin with. The
+        -- daemon retries on both, but the wording tells the operator which happened.
         GMODMCP.WriteResult(cmd.id, { id = cmd.id, ok = false, error = "no client connected (realm=cl tool)" })
         return
     end
+    pending[cmd.id] = ply
     net.Start("gmod_mcp_cl_cmd")
     net.WriteString(cmd.id)
     net.WriteString(cmd.tool)
@@ -31,9 +51,15 @@ function GMODMCP.RelayToClient(cmd)
     net.Send(ply)
 end
 
--- Reassembly of chunked client results.
-local chunks = {}
-local rlReset, rlCount = 0, 0
+-- A client that leaves can no longer answer. Fail its in-flight commands now rather than
+-- making the daemon wait out a timeout, and drop the partial chunks it will never finish.
+hook.Add("PlayerDisconnected", "gmod_mcp_bridge.relay_cleanup", function(ply)
+    for id, target in pairs(pending) do
+        if target == ply or not IsValid(target) then
+            resolveFailure(id, "client disconnected before answering (realm=cl tool)")
+        end
+    end
+end)
 
 net.Receive("gmod_mcp_cl_res", function(_, ply)
     if not IsValid(ply) then return end
@@ -61,6 +87,7 @@ net.Receive("gmod_mcp_cl_res", function(_, ply)
     end
     if rec.got >= rec.total then
         chunks[id] = nil
+        pending[id] = nil
         GMODMCP.WriteResultRaw(id, table.concat(rec.parts))
     end
 end)

@@ -3,9 +3,28 @@ import { defineTool } from "../mcp/registry.js";
 import type { AnyToolDef, ToolContext, ToolResult } from "../mcp/registry.js";
 
 /**
+ * Failures that mean "the client is not there right now" rather than "this call is
+ * wrong". Only these are retried: a bad argument or a raising handler must fail at once.
+ */
+const CLIENT_ABSENT = /no client connected|client disconnected before answering|^timeout: no result/;
+
+const RETRY_INTERVAL_MS = 2_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
  * Runs a bridge-side tool (sv or cl realm): pushes the command, waits for the
  * correlated result and normalises the output. Returns a readable error when the
  * bridge is not connected rather than throwing.
+ *
+ * Client-realm calls retry while the client is simply absent, for up to
+ * `config.clientWaitMs`. The realm depends on a human being connected, and humans crash,
+ * alt-tab and reconnect. Without this an agent mid-iteration got a hard failure the
+ * moment its human dropped, and had no way to tell "come back and I will continue" from
+ * "this call is broken" -- so it either gave up or hammered the tool blindly.
+ *
+ * Server-realm calls are never retried: srcds does not come and go mid-session, so a
+ * failure there is a real one and hiding it behind retries would only delay the report.
  */
 async function callBridge(
   ctx: ToolContext,
@@ -21,11 +40,30 @@ async function callBridge(
         "bridge not connected: no gmod_mcp_bridge addon has polled the daemon -- is the GMod server running with the addon mounted?",
     };
   }
-  try {
-    const res = await ctx.bridge.enqueue(realm, tool, args, { confirmed });
-    return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error ?? "bridge-side failure" };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+
+  const deadline = Date.now() + (realm === "cl" ? ctx.config.clientWaitMs : 0);
+  let attempts = 0;
+
+  for (;;) {
+    attempts += 1;
+    let error: string;
+    try {
+      const res = await ctx.bridge.enqueue(realm, tool, args, { confirmed });
+      if (res.ok) return { ok: true, data: res.data };
+      error = res.error ?? "bridge-side failure";
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+
+    const retryable = CLIENT_ABSENT.test(error);
+    if (!retryable || Date.now() >= deadline) {
+      // Say how long we waited, so the caller can tell a genuinely absent client from
+      // a call that never had a chance.
+      const waited = attempts > 1 ? ` (retried for ${ctx.config.clientWaitMs}ms, ${attempts} attempts)` : "";
+      return { ok: false, error: error + waited };
+    }
+
+    await sleep(Math.min(RETRY_INTERVAL_MS, Math.max(0, deadline - Date.now())));
   }
 }
 

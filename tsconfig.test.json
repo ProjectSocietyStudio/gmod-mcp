@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Nothing is emitted here, so the build's src-only rootDir does not apply.
+    "rootDir": "."
+  },
+  "include": ["src", "test"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -11,6 +11,13 @@ export const ConfigFile = z.object({
   repoRoot: z.string().optional(),
   /** Addons targeted by default for lint and reload. */
   addons: z.array(z.string()).default([]),
+  /**
+   * How long a client-realm call keeps retrying while the client is absent, in ms.
+   * The realm needs a human connected, and humans crash and reconnect; retrying lets an
+   * agent resume when they come back instead of failing the moment they drop. 0 fails
+   * fast. Server-realm calls ignore this: srcds does not come and go.
+   */
+  clientWaitMs: z.number().int().min(0).max(600_000).default(30_000),
   /** Tools allowed without confirmation. Empty means the default policy. */
   toolAllowlist: z.array(z.string()).default([]),
   /** Plugin ESM modules to load, relative to the repo root. Each exports `tools`. */

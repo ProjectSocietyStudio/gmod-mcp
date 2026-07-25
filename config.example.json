@@ -1,6 +1,7 @@
 {
   "repoRoot": ".",
   "addons": ["gmod_mcp_bridge"],
+  "clientWaitMs": 30000,
   "toolAllowlist": [],
   "plugins": []
 }

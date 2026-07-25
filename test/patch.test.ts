@@ -1,19 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Config } from "../src/config.js";
 import { PatchEngine } from "../src/patch/engine.js";
-
-function makeConfig(): Config {
-  const repoRoot = mkdtempSync(join(tmpdir(), "gmod-mcp-repo-"));
-  return {
-    repoRoot,
-    stateDir: join(repoRoot, ".gmod-mcp"),
-    addons: [],
-    toolAllowlist: [],
-  };
-}
+import { makeConfig } from "./helpers.js";
 
 describe("PatchEngine", () => {
   it("applies a patch, writes the file and produces a diff", async () => {

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
 import { readGameLog } from "../src/proc/scripts.js";
+import { makeConfig } from "./helpers.js";
 
 const BOOT = "Initializing Steam libraries for LAN server\n";
 
@@ -29,7 +30,7 @@ function makeRepo(recordedOffset?: number): Config {
     );
   }
 
-  return { repoRoot, stateDir, addons: [], toolAllowlist: [] };
+  return makeConfig({ repoRoot, stateDir });
 }
 
 describe("readGameLog", () => {
