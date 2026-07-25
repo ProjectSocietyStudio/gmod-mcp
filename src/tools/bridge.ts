@@ -235,6 +235,61 @@ export const clientBridgeTools: AnyToolDef[] = [
     inputSchema: {},
   }),
   bridgeTool({
+    name: "read_view",
+    description:
+      "What the client sees and is pointed at: eye position and angles, aim trace (class, index, distance, hit position), health, weapon, cursor position and visibility, the hovered panel, the panel holding keyboard focus, and the current scripted-input mode. This is the cheap half of an act-then-look loop -- one chunk, no image -- and answers 'am I aimed at the door' without a screenshot.",
+    realm: "cl",
+    inputSchema: {},
+  }),
+  bridgeTool({
+    name: "client_input",
+    description:
+      "Drives the connected GMod client: movement, aim, keys, Derma clicks, typing, chat. Modal -- 'world' drives movement through CreateMove, 'ui' hands input to the panel system, and the two are mutually exclusive; the action switches mode for you. Durations are SECONDS (CreateMove runs at the client's cmdrate, so tick counts are not a duration), clamped to 5s, and everything resets after 30s or on `gmod_mcp_release` in the client console. Follow with read_view or capture_screen to see the effect -- batch them with settleMs so the observation is not taken from the frame before the action.",
+    realm: "cl",
+    inputSchema: {
+      action: z.enum([
+        "move",
+        "look",
+        "look_at",
+        "press",
+        "release",
+        "click",
+        "move_cursor",
+        "type",
+        "key_ui",
+        "scroll",
+        "select_weapon",
+        "say",
+        "mode",
+        "reset",
+      ]),
+      forward: z.number().optional().describe("move: forward speed, negative for backward."),
+      side: z.number().optional().describe("move: strafe speed."),
+      up: z.number().optional().describe("move: vertical speed (swimming, ladders)."),
+      pitch: z.number().optional().describe("look: pitch, clamped to +-89."),
+      yaw: z.number().optional().describe("look: yaw."),
+      pos: z.array(z.number()).length(3).optional().describe("look_at: world position to aim at."),
+      key: z
+        .number()
+        .int()
+        .optional()
+        .describe("press/release: IN_ bit (IN_ATTACK 1, IN_JUMP 2, IN_DUCK 4, IN_FORWARD 8, IN_BACK 16, IN_USE 32, IN_MOVELEFT 512, IN_MOVERIGHT 1024, IN_ATTACK2 2048, IN_RELOAD 8192, IN_SPEED 131072). key_ui: a KEY_ enum instead."),
+      x: z.number().int().optional().describe("click/move_cursor: screen X."),
+      y: z.number().int().optional().describe("click/move_cursor: screen Y."),
+      button: z.enum(["left", "right", "middle"]).optional().describe("click: which mouse button."),
+      text: z.string().optional().describe("type: characters to send to the focused panel. say: chat message."),
+      delta: z.number().int().optional().describe("scroll: wheel delta."),
+      weapon: z.string().optional().describe("select_weapon: weapon class the player is carrying."),
+      mode: z.enum(["off", "world", "ui"]).optional().describe("mode: which input mode to switch to."),
+      duration: z
+        .number()
+        .min(0)
+        .max(5)
+        .optional()
+        .describe("Seconds to hold a key, a movement or a scripted aim. Clamped to 5."),
+    },
+  }),
+  bridgeTool({
     name: "read_client_convars",
     description: "Client-side convar values. Without names, returns a common subset.",
     realm: "cl",

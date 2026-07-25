@@ -215,3 +215,179 @@ hook.Add("OnLuaError", "gmod_mcp_bridge_cl.errors", function(err, realm, stack, 
     if #errorBuffer > 100 then table.remove(errorBuffer, 1) end
 end)
 
+-- ------------------------------------------------------- acting and looking ---
+-- Loaded after gmod_mcp_bridge_input.lua defines GMODMCP.Input (alphabetical order in
+-- autorun/client puts _cl before _input, so resolve the table lazily inside the handlers
+-- rather than caching it here).
+
+--- What the player is pointed at, which is what most act-then-look steps actually need.
+--- A screenshot answers "is the door open" in seconds and several hundred KB; this
+--- answers "am I aimed at the door" in one chunk.
+H.read_view = function()
+    local ply = LocalPlayer()
+    if not IsValid(ply) then error("no local player") end
+
+    local I = GMODMCP.Input or {}
+    local ang = ply:EyeAngles()
+    local tr = ply:GetEyeTrace()
+    local wep = ply:GetActiveWeapon()
+    local hovered = vgui.GetHoveredPanel()
+    local focus = vgui.GetKeyboardFocus()
+    local mx, my = input.GetCursorPos()
+
+    return {
+        pos = { ply:GetPos():Unpack() },
+        eye_pos = { ply:EyePos():Unpack() },
+        eye_ang = { ang.p, ang.y, ang.r },
+        health = ply:Health(),
+        armor = ply:Armor(),
+        alive = ply:Alive(),
+        weapon = IsValid(wep) and wep:GetClass() or nil,
+        aim = IsValid(tr.Entity) and {
+            class = tr.Entity:GetClass(),
+            index = tr.Entity:EntIndex(),
+            distance = math.Round(tr.StartPos:Distance(tr.HitPos)),
+            hitpos = { tr.HitPos:Unpack() },
+        } or { hit_world = tr.Hit },
+        cursor = { x = mx, y = my, visible = vgui.CursorVisible() },
+        -- Positive confirmation that a click would land somewhere, instead of inferring
+        -- it from pixels afterwards.
+        hovered = IsValid(hovered) and hovered:GetClassName() or nil,
+        keyboard_focus = IsValid(focus) and focus:GetClassName() or nil,
+        input_mode = I.mode or "off",
+        input_locked_for = I.deadline and math.max(0, math.Round(I.deadline - RealTime(), 1)) or 0,
+        screen = { w = ScrW(), h = ScrH() },
+    }
+end
+
+--- Multi-frame click. The cursor must already be where the click lands BEFORE the press
+--- fires: vgui.GetHoveredPanel is documented as lagging a frame, so moving and pressing
+--- in the same frame is the first reason a synthetic click does nothing.
+local function clickSequence(cmd, x, y, code)
+    input.SetCursorPos(x, y)
+    local hookName = "gmod_mcp_click_" .. cmd.id
+    local frame = 0
+    -- Built here rather than inside the hook: it runs once, but a table literal in a
+    -- per-frame hook is a habit the perf lint is right to flag.
+    local result = { clicked = { x = x, y = y } }
+
+    hook.Add("Think", hookName, function()
+        frame = frame + 1
+        if frame == 1 then
+            local panel = vgui.GetHoveredPanel()
+            result.hovered = IsValid(panel) and panel:GetClassName() or nil
+            gui.InternalMousePressed(code)
+        elseif frame >= 2 then
+            hook.Remove("Think", hookName)
+            gui.InternalMouseReleased(code)
+            cmd.done(true, result)
+        end
+    end)
+end
+
+local MOUSE_CODES = { left = MOUSE_LEFT, right = MOUSE_RIGHT, middle = MOUSE_MIDDLE }
+
+local ACTIONS = {}
+
+ACTIONS.mode = function(args) return { mode = GMODMCP.Input.SetMode(args.mode or "off") } end
+ACTIONS.reset = function() GMODMCP.Input.Reset() return { mode = "off" } end
+
+ACTIONS.move = function(args)
+    GMODMCP.Input.SetMode("world")
+    GMODMCP.Input.Move(args.forward, args.side, args.up, args.duration or 0.5)
+    return { forward = args.forward or 0, side = args.side or 0, up = args.up or 0 }
+end
+
+ACTIONS.look = function(args)
+    GMODMCP.Input.SetMode("world")
+    GMODMCP.Input.Aim(args.pitch, args.yaw, args.duration or 0.3)
+    return { pitch = GMODMCP.Input.aim.p, yaw = GMODMCP.Input.aim.y }
+end
+
+ACTIONS.look_at = function(args)
+    if not istable(args.pos) then error("pos [x, y, z] is required for look_at") end
+    GMODMCP.Input.SetMode("world")
+    GMODMCP.Input.AimAt(Vector(tonumber(args.pos[1]) or 0, tonumber(args.pos[2]) or 0, tonumber(args.pos[3]) or 0), args.duration or 0.3)
+    return { pitch = GMODMCP.Input.aim.p, yaw = GMODMCP.Input.aim.y }
+end
+
+ACTIONS.press = function(args)
+    if not isnumber(args.key) then error("key (IN_ bit value) is required for press") end
+    GMODMCP.Input.SetMode("world")
+    GMODMCP.Input.Hold(args.key, args.duration or 0.2)
+    return { held = args.key, seconds = args.duration or 0.2 }
+end
+
+ACTIONS.release = function(args)
+    if not isnumber(args.key) then error("key (IN_ bit value) is required for release") end
+    GMODMCP.Input.Release(args.key)
+    return { released = args.key }
+end
+
+ACTIONS.move_cursor = function(args)
+    GMODMCP.Input.SetMode("ui")
+    input.SetCursorPos(math.floor(tonumber(args.x) or 0), math.floor(tonumber(args.y) or 0))
+    return { x = tonumber(args.x) or 0, y = tonumber(args.y) or 0 }
+end
+
+ACTIONS.click = function(args, cmd)
+    local code = MOUSE_CODES[args.button or "left"]
+    if not code then error("button must be left, right or middle") end
+    GMODMCP.Input.SetMode("ui")
+    clickSequence(cmd, math.floor(tonumber(args.x) or 0), math.floor(tonumber(args.y) or 0), code)
+    return GMODMCP.ASYNC
+end
+
+ACTIONS.type = function(args)
+    if not isstring(args.text) then error("text (string) is required for type") end
+    -- InternalKeyTyped takes an ASCII code and reaches whatever holds keyboard focus.
+    -- InternalKeyCodeTyped takes a KEY_ enum instead, which a DTextEntry ignores.
+    for i = 1, #args.text do
+        gui.InternalKeyTyped(string.byte(args.text, i))
+    end
+    local focus = vgui.GetKeyboardFocus()
+    return { typed = #args.text, keyboard_focus = IsValid(focus) and focus:GetClassName() or nil }
+end
+
+ACTIONS.key_ui = function(args)
+    if not isnumber(args.key) then error("key (KEY_ enum) is required for key_ui") end
+    gui.InternalKeyCodePressed(args.key)
+    gui.InternalKeyCodeTyped(args.key)
+    gui.InternalKeyCodeReleased(args.key)
+    return { key = args.key }
+end
+
+ACTIONS.scroll = function(args)
+    gui.InternalMouseWheeled(math.floor(tonumber(args.delta) or 0))
+    return { delta = tonumber(args.delta) or 0 }
+end
+
+ACTIONS.select_weapon = function(args)
+    if not isstring(args.weapon) then error("weapon (class) is required for select_weapon") end
+    local wep = LocalPlayer():GetWeapon(args.weapon)
+    -- input.SelectWeapon, not CUserCmd:SelectWeapon: the latter may not take effect while
+    -- the current command is in prediction.
+    if not IsValid(wep) then error("not carrying weapon: " .. args.weapon) end
+    input.SelectWeapon(wep)
+    return { weapon = args.weapon }
+end
+
+ACTIONS.say = function(args)
+    if not isstring(args.text) then error("text (string) is required for say") end
+    -- Goes through GM:PlayerSay server-side, exactly as a human typing it would. Driving
+    -- the chatbox UI is a different test; this is the one that exercises commands.
+    RunConsoleCommand("say", args.text)
+    return { said = args.text }
+end
+
+H.client_input = function(args, cmd)
+    if not isstring(args.action) then error("action (string) is required") end
+    local fn = ACTIONS[args.action]
+    if not fn then
+        local names = {}
+        for name in pairs(ACTIONS) do names[#names + 1] = name end
+        table.sort(names)
+        error("unknown action '" .. args.action .. "'; expected one of: " .. table.concat(names, ", "))
+    end
+    return fn(args, cmd)
+end
