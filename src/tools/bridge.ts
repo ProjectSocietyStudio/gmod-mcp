@@ -143,9 +143,10 @@ export const serverBridgeTools: AnyToolDef[] = [
   }),
   bridgeTool({
     name: "read_timers",
-    description: "Timers created through timer.Create and tracked by the bridge. Timers predating it are invisible.",
+    description:
+      "State of named timers: exists, time left, repetitions left. GMod cannot enumerate timers, so `names` is required to get anything back.",
     realm: "sv",
-    inputSchema: {},
+    inputSchema: { names: z.array(z.string()).optional() },
   }),
   bridgeTool({
     name: "run_console_command",
