@@ -18,6 +18,30 @@ export interface ToolContext {
 export type ToolResult = Record<string, unknown>;
 
 /**
+ * An image the agent should actually SEE, carried under `IMAGE_KEY` in a ToolResult.
+ *
+ * Without this, a screenshot comes back as base64 inside a text block: the model is
+ * billed for every byte and still cannot look at the picture. The failure is silent --
+ * the tool returns, the tests pass, and the "see" half of an act/see loop quietly does
+ * nothing. `createMcpServer` lifts the key out of the JSON body and emits a real image
+ * content block, so the payload is never billed twice.
+ */
+export interface ToolImage {
+  /** Base64 payload, with no `data:` prefix. */
+  data: string;
+  /** MIME type, e.g. `image/jpeg`. */
+  mimeType: string;
+}
+
+export const IMAGE_KEY = "_image";
+
+export function isToolImage(value: unknown): value is ToolImage {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v["data"] === "string" && typeof v["mimeType"] === "string";
+}
+
+/**
  * Definition of an MCP tool. The zod `shape` describes the inputs; the handler
  * receives arguments already validated and typed.
  *

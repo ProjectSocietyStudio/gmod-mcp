@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineTool } from "../mcp/registry.js";
+import { defineTool, IMAGE_KEY } from "../mcp/registry.js";
 import type { AnyToolDef, ToolContext, ToolResult } from "../mcp/registry.js";
 
 /**
@@ -74,6 +74,8 @@ interface BridgeToolSpec {
   realm: "sv" | "cl";
   inputSchema: z.ZodRawShape;
   guarded?: boolean;
+  /** Post-processes a successful result, e.g. to lift out an image content block. */
+  transform?: (result: ToolResult) => ToolResult;
 }
 
 function bridgeTool(spec: BridgeToolSpec): AnyToolDef {
@@ -84,8 +86,10 @@ function bridgeTool(spec: BridgeToolSpec): AnyToolDef {
     ...(spec.guarded ? { guarded: true } : {}),
     inputSchema: spec.inputSchema,
     // Guarded tools only reach this point once the MCP gate has allowed them.
-    handler: (args: Record<string, unknown>, ctx) =>
-      callBridge(ctx, spec.realm, spec.name, args, spec.guarded === true),
+    handler: async (args: Record<string, unknown>, ctx) => {
+      const res = await callBridge(ctx, spec.realm, spec.name, args, spec.guarded === true);
+      return res.ok && spec.transform ? spec.transform(res) : res;
+    },
   });
 }
 
@@ -197,9 +201,19 @@ export const clientBridgeTools: AnyToolDef[] = [
   }),
   bridgeTool({
     name: "capture_screen",
-    description: "Captures the client's screen (base64 JPEG) on the next frame. Requires an active GMod client.",
+    description:
+      "Captures the client's screen on the next frame and returns it as a viewable image. Requires an active GMod client.",
     realm: "cl",
     inputSchema: {},
+    // Lift the base64 into an image content block. Left in the JSON body it would be
+    // billed as text and still be invisible to the model -- see IMAGE_KEY.
+    transform: (res) => {
+      const data = (res["data"] as Record<string, unknown> | undefined) ?? {};
+      const base64 = data["base64"];
+      if (typeof base64 !== "string") return res;
+      const { base64: _omit, ...meta } = data;
+      return { ...res, data: meta, [IMAGE_KEY]: { data: base64, mimeType: "image/jpeg" } };
+    },
   }),
   bridgeTool({
     name: "read_console",
