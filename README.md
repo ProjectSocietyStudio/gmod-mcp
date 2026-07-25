@@ -78,12 +78,15 @@ NUL-safe log reads.
 `read_logs`, `package`, `patch_file`, `restore_patch`, `reload_file`, `reload_addon`,
 `validate`, `run_iteration`.
 
-**Server (via bridge)** — `batch`, `read_runtime`, `read_players`, `read_entities`,
+**Server, reading** — `batch`, `read_runtime`, `read_players`, `read_entities`,
 `inspect_entity`, `read_hooks`, `read_convars`, `read_net_messages`, `read_timers`,
 `run_console_command`, `send_debug`, `run_test`, `run_lua` (guarded, optional extension).
 
-**Client (via bridge)** — `read_panels`, `inspect_panel`, `capture_screen`, `read_console`,
-`read_client_convars`.
+**Server, acting** (all guarded) — `spawn_entity`, `world_edit`, `set_player_state`,
+`force_hook`.
+
+**Client (via bridge)** — `read_view`, `client_input`, `read_panels`, `inspect_panel`,
+`capture_screen`, `read_console`, `read_client_convars`.
 
 `health` also asks the addon which handlers it registered and reports any the daemon
 declares but the game does not have. That gap used to surface only as an "unknown handler"
@@ -92,6 +95,31 @@ after a full round trip, or — when a whole `include` was missing — not at al
 `capture_screen` returns a real image content block. Returned as text, a base64 JPEG is
 billed to the model token by token and still cannot be looked at, so the "see" half of an
 act/see loop silently does nothing while every test passes.
+
+## Acting
+
+The reading tools diagnose; the acting ones set up what is worth diagnosing. Server-side,
+`spawn_entity` places something, `world_edit` moves, freezes, heals, arms or removes it,
+`set_player_state` sets money, job, salary or RP name, and `force_hook` runs a gamemode
+hook directly.
+
+Money goes through the r-capitalism ledger when it is loaded. That ledger holds an audited
+invariant — `sum(balances) == issued - burned` — and a raw `addMoney` would move a balance
+without an entry, leaving the drift permanently off zero. A debugging tool must not corrupt
+what is being debugged. Amounts are integer cents, as the rest of that server economy is.
+
+`force_hook` coerces tagged arguments, because JSON cannot carry a game object:
+`{"__ent": 3}`, `{"__ply": "STEAM_0:1:2"}`, `{"__vec": [x,y,z]}`, `{"__ang": [p,y,r]}`.
+
+Client-side, `client_input` drives the connected GMod client — movement, aim, key holds,
+Derma clicks, typing, chat — and `read_view` reports eye position, aim trace, cursor,
+hovered panel and keyboard focus. `read_view` is the cheap half of an act-then-look loop:
+one chunk, no image, and it answers "am I aimed at the door" without a screenshot.
+
+`client_input` is bounded in Lua rather than guarded behind a confirmation. It drives a
+real person's machine, and a prompt clicked two hundred times is not a safety property:
+holds expire, durations are seconds and clamped to five, a 30s deadline resets everything,
+and `gmod_mcp_release` in the client console returns control without involving the daemon.
 
 ## Batching
 
@@ -117,8 +145,19 @@ Guarded tools are checked on both sides. `batch` is a single unguarded definitio
 without the check a `run_lua` step would bypass the confirmation its own gate demands; the
 daemon resolves each step against the registry and the Lua runner repeats the check.
 
+Any argument may instead be `{"__step": 1, "get": "index"}`, read from an earlier step's
+result. Without it, spawning something and then acting on it costs two round trips — the
+caller cannot know the EntIndex until the spawn has answered, which is the round trip
+batching exists to remove.
+
+Steps share a server tick unless `settleMs` is set, and some engine effects only land at
+end of frame: `Entity:Remove()` is deferred, so a step reading the entity back still finds
+it valid and the agent concludes the removal failed. Set `settleMs` (100 is usually enough)
+whenever a step must observe an earlier one.
+
 Client-realm steps are refused explicitly rather than silently dropped — a batch runs
-inside the server addon, and `cl` tools are relayed over net.
+inside the server addon, and `cl` tools are relayed over net. So an act-then-look loop on
+the client is currently two round trips, not one.
 
 All three realms have been exercised against a live DarkRP server: the server tools on
 `rp_nycity_day` at tick 33, and the client tools against a connected GMod client —
