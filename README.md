@@ -254,6 +254,13 @@ export const tools = [
 
 A failing plugin is reported on stderr without blocking startup.
 
+## Design notes
+
+- [`docs/2026-07-25-autonomie-client-design.md`](docs/2026-07-25-autonomie-client-design.md) — what
+  the client side needs before an agent can drive it without a human: name a panel instead of
+  guessing a pixel, assert text instead of reading a JPEG, and type into a field at all. Each gap
+  listed there blocked a real session.
+
 ## Development
 
 ```bash
