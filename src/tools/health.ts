@@ -4,14 +4,14 @@ import { defineTool } from "../mcp/registry.js";
 import { VERSION } from "../version.js";
 
 /**
- * Sonde de santé : prouve le handshake MCP et rapporte la vue qu'a le daemon
- * de l'environnement (racine repo détectée, scripts de la boucle présents).
- * Sert de premier point de vérification bout-en-bout de la Phase 0.
+ * Health probe: proves the MCP handshake works and reports the daemon's view of its
+ * environment -- the repo root it detected and whether the loop's scripts are present.
+ * This is the first end-to-end check to run.
  */
 export const healthTool = defineTool({
   name: "health",
   description:
-    "État du daemon gmod-mcp : version, racine du repo détectée, présence des scripts tools/, dossier d'état.",
+    "gmod-mcp daemon status: version, detected repo root, presence of the tools/ scripts, state directory.",
   realm: "local",
   inputSchema: {},
   handler: (_args, ctx) => {

@@ -4,9 +4,9 @@ import type { Config } from "./config.js";
 import type { AnyToolDef } from "./mcp/registry.js";
 
 /**
- * Charge les plugins déclarés dans la config. Chaque plugin est un module ESM qui
- * exporte `tools: AnyToolDef[]`. Un plugin défaillant est signalé sur stderr mais
- * n'empêche pas le démarrage (extensibilité sans fragilité).
+ * Loads the plugins declared in the config. Each plugin is an ESM module exporting
+ * `tools: AnyToolDef[]`. A failing plugin is reported on stderr but does not block
+ * startup -- extensibility without fragility.
  *
  * Contrat plugin :
  *   export const tools = [ defineTool({ ... }), ... ];
@@ -18,14 +18,14 @@ export async function loadPlugins(config: Config): Promise<AnyToolDef[]> {
     try {
       const mod = (await import(pathToFileURL(abs).href)) as { tools?: unknown };
       if (!Array.isArray(mod.tools)) {
-        process.stderr.write(`gmod-mcp: plugin ${spec} n'exporte pas \`tools\` (tableau) — ignoré\n`);
+        process.stderr.write(`gmod-mcp: plugin ${spec} does not export a \`tools\` array -- ignored\n`);
         continue;
       }
       collected.push(...(mod.tools as AnyToolDef[]));
-      process.stderr.write(`gmod-mcp: plugin chargé ${spec} (+${mod.tools.length} outils)\n`);
+      process.stderr.write(`gmod-mcp: loaded plugin ${spec} (+${mod.tools.length} tools)\n`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`gmod-mcp: échec du plugin ${spec} — ${message}\n`);
+      process.stderr.write(`gmod-mcp: plugin ${spec} failed -- ${message}\n`);
     }
   }
   return collected;

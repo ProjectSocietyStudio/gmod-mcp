@@ -10,9 +10,9 @@ function textResult(text: string, isError = false): CallToolResult {
 
 /**
  * Construit le serveur MCP et y branche tous les outils du registre.
- * Chaque handler est enveloppé : audit (call/result/error) + gate de confirmation
- * pour les outils gardés. Le résultat est renvoyé en JSON texte (consommable par
- * l'agent) — pas de socket, transport stdio branché par l'appelant.
+ * Every handler is wrapped with auditing (call/result/error) and a confirmation gate
+ * for guarded tools. Results come back as JSON text for the agent to consume. No
+ * socket: the caller wires up the stdio transport.
  */
 export function createMcpServer(
   registry: ToolRegistry,
@@ -38,7 +38,7 @@ export function createMcpServer(
         });
 
         if (!isCallAllowed(def, args, ctx.config.toolAllowlist)) {
-          const msg = `Outil gardé « ${def.name} » : passez confirm:true (action sensible, journalisée).`;
+          const msg = `Guarded tool "${def.name}": pass confirm:true (sensitive action, audited).`;
           ctx.audit.record({
             kind: "tool_result",
             commandId,

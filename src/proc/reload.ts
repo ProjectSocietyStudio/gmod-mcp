@@ -4,10 +4,10 @@ import type { Config } from "../config.js";
 import { resolveAddonDir } from "./scripts.js";
 
 /**
- * Bump du mtime pour déclencher l'auto-refresh Lua de GMod (le serveur recharge
- * les fichiers modifiés). Best-effort : l'auto-refresh couvre l'édition de
+ * Bumps mtime to trigger GMod's Lua autorefresh, which reloads changed files. This is
+ * best-effort: autorefresh covers editing
  * fichiers existants ; les nouveaux fichiers ou les autoruns exigent un restart
- * — c'est à l'appelant (validation/itération) de le décider.
+ * -- it is up to the caller (validation, iteration) to decide.
  */
 export function touchFile(config: Config, file: string): boolean {
   const abs = resolve(config.repoRoot, file);
@@ -17,7 +17,7 @@ export function touchFile(config: Config, file: string): boolean {
   return true;
 }
 
-/** Touche récursivement tous les .lua d'un addon. Renvoie le nombre touché. */
+/** Recursively touches every .lua file of an addon. Returns how many were touched. */
 export function touchAddon(config: Config, addon: string): number {
   const dir = resolveAddonDir(config, addon);
   if (!existsSync(dir)) return 0;

@@ -15,7 +15,7 @@ interface PatchRecord extends Patch {
 
 /**
  * Applique et annule des modifications de fichiers, avec sauvegarde et diff.
- * Périmètre verrouillé : refuse toute cible hors de la racine du repo.
+ * Locked scope: refuses any target outside the repo root.
  */
 export class PatchEngine {
   private readonly config: Config;
@@ -30,12 +30,12 @@ export class PatchEngine {
     mkdirSync(this.backupsDir, { recursive: true });
   }
 
-  /** Résout une cible dans le repo ; lève si elle s'en échappe. */
+  /** Resolves a target inside the repo; throws if it escapes. */
   private resolveInsideRepo(file: string): string {
     const abs = resolve(this.config.repoRoot, file);
     const rel = relative(this.config.repoRoot, abs);
     if (rel.startsWith("..") || resolve(this.config.repoRoot, rel) !== abs) {
-      throw new Error(`hors périmètre : ${file} est hors de ${this.config.repoRoot}`);
+      throw new Error(`out of scope: ${file} lies outside ${this.config.repoRoot}`);
     }
     return abs;
   }
@@ -45,8 +45,8 @@ export class PatchEngine {
   }
 
   /**
-   * Remplace intégralement le contenu d'un fichier, après sauvegarde. Renvoie le
-   * Patch (avec diff unifié). Crée le fichier s'il n'existe pas.
+   * Replaces a file's entire contents after backing it up. Returns the Patch, with a
+   * unified diff. Creates the file when it does not exist.
    */
   async applyFile(
     file: string,
@@ -78,7 +78,7 @@ export class PatchEngine {
     return patch;
   }
 
-  /** Restaure l'état d'avant le patch. Idempotent après un premier restore. */
+  /** Restores the pre-patch state. Idempotent after the first restore. */
   restore(patchId: string): { ok: boolean; file: string; action: string } {
     const rp = this.recordPath(patchId);
     if (!existsSync(rp)) throw new Error(`patch inconnu : ${patchId}`);
@@ -87,13 +87,13 @@ export class PatchEngine {
     let action: string;
     if (rec.existedBefore) {
       copyFileSync(rec.backupPath, rec.absFile);
-      action = "restauré depuis la sauvegarde";
+      action = "restored from backup";
     } else if (existsSync(rec.absFile)) {
-      // Le fichier n'existait pas avant : on revient à cet état en le vidant.
+      // The file did not exist before, so return to that state by emptying it.
       writeFileSync(rec.absFile, "");
-      action = "fichier créé par le patch remis à vide";
+      action = "file created by the patch was emptied";
     } else {
-      action = "déjà absent";
+      action = "already absent";
     }
 
     const reverted: PatchRecord = { ...rec, revertedAt: Date.now() };
@@ -101,7 +101,7 @@ export class PatchEngine {
     return { ok: true, file: rec.file, action };
   }
 
-  /** Diff unifié via `diff -u` (exit 1 = fichiers différents, normal). */
+  /** Unified diff via `diff -u` (exit 1 means the files differ, which is expected). */
   private async diff(oldPath: string, newPath: string, label: string): Promise<string> {
     const r = await run("diff", ["-u", "--label", `a/${label}`, "--label", `b/${label}`, oldPath, newPath]);
     return r.stdout;

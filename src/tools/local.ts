@@ -23,13 +23,13 @@ function tally(findings: Finding[]): { errors: number; warnings: number } {
 
 /** Tronque un texte long pour le renvoyer sans noyer l'agent. */
 function clip(s: string, max = 8000): string {
-  return s.length > max ? s.slice(0, max) + `\n…(${s.length - max} octets tronqués)` : s;
+  return s.length > max ? s.slice(0, max) + `\n...(${s.length - max} bytes truncated)` : s;
 }
 
 const lint = defineTool({
   name: "lint",
   description:
-    "Lance tools/lint.sh sur un addon (nom ou chemin). Renvoie les findings structurés (fichier/ligne/règle) + code de sortie. exit 0 = propre.",
+    "Runs tools/lint.sh on an addon (name or path). Returns structured findings (file, line, rule) and the exit code. Exit 0 means clean.",
   realm: "local",
   inputSchema: { addon: z.string().min(1) },
   handler: async ({ addon }, ctx) => {
@@ -51,7 +51,7 @@ const lint = defineTool({
 const startServerTool = defineTool({
   name: "start_server",
   description:
-    "Démarre le serveur dédié via tools/start-server.sh [map] [gamemode] [tickrate] et enregistre la frontière de boot du log. Défauts du script : rp_nycity_day/darkrp/33.",
+    "Starts the dedicated server through tools/start-server.sh [map] [gamemode] [tickrate] and records the log's boot boundary. Script defaults: rp_nycity_day/darkrp/33.",
   realm: "local",
   inputSchema: {
     map: z.string().optional(),
@@ -68,15 +68,15 @@ const startServerTool = defineTool({
       stderr: clip(result.stderr),
       note:
         result.code === 1
-          ? "start-server.sh a refusé (serveur déjà démarré ? voir stderr)."
-          : "Serveur lancé en arrière-plan. Laissez ~45 s puis read_logs.",
+          ? "start-server.sh refused -- is the server already running? See stderr."
+          : "Server started in the background. Give it around 45s, then call read_logs.",
     };
   },
 });
 
 const stopServerTool = defineTool({
   name: "stop_server",
-  description: "Arrête le serveur dédié via tools/stop-server.sh.",
+  description: "Stops the dedicated server through tools/stop-server.sh.",
   realm: "local",
   inputSchema: {},
   handler: async (_args, ctx) => {
@@ -88,7 +88,7 @@ const stopServerTool = defineTool({
 const syncConfigTool = defineTool({
   name: "sync_config",
   description:
-    "Réapplique server-config/ et (re)crée les symlinks via tools/sync-server-config.sh. check:true = compare sans écrire (--check).",
+    "Reapplies server-config/ and (re)creates the symlinks through tools/sync-server-config.sh. check:true compares without writing (--check).",
   realm: "local",
   inputSchema: { check: z.boolean().default(false) },
   handler: async ({ check }, ctx) => {
@@ -100,7 +100,7 @@ const syncConfigTool = defineTool({
 const readLogs = defineTool({
   name: "read_logs",
   description:
-    "Lit les logs du serveur. source=game (erreurs Lua, -condebug) ou stdout (wrapper). sinceBoot:true borne au boot courant. errorsOnly:true renvoie des findings runtime structurés.",
+    "Reads the server logs. source=game (Lua errors, -condebug) or stdout (the wrapper). sinceBoot:true bounds output to the current boot. errorsOnly:true returns structured runtime findings.",
   realm: "local",
   inputSchema: {
     source: z.enum(["game", "stdout"]).default("game"),
@@ -124,7 +124,7 @@ const readLogs = defineTool({
 const packageTool = defineTool({
   name: "package",
   description:
-    "Construit le .gma d'un addon via tools/package-gma.sh (lint d'abord, refus si échec). Sortie dans dist/.",
+    "Builds an addon's .gma through tools/package-gma.sh, linting first and refusing on failure. Output lands in dist/.",
   realm: "local",
   inputSchema: { addon: z.string().min(1) },
   handler: async ({ addon }, ctx) => {

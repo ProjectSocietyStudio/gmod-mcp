@@ -15,7 +15,7 @@ const evtDir = join(dataDir, "evt");
 
 /**
  * Faux addon en Node : reproduit exactement ce que fait le GLua — scanne cmd/,
- * lit, supprime, exécute (écho), écrit res/. Prouve le protocole sans GMod.
+ * reads, deletes, echoes and writes res/. Proves the protocol without GMod.
  */
 function startFakeAddon(): { stop: () => void } {
   const timer = setInterval(() => {
@@ -57,7 +57,7 @@ afterAll(async () => {
 });
 
 describe("FileBridge", () => {
-  it("fait l'aller-retour commande -> résultat par fichiers", async () => {
+  it("round-trips command -> result through files", async () => {
     const res = await bridge.enqueue("sv", "read_players", { limit: 5 });
     expect(res.ok).toBe(true);
     expect(res.data).toMatchObject({ echo: "read_players", args: { limit: 5 } });
@@ -68,13 +68,13 @@ describe("FileBridge", () => {
     expect((res.data as { confirmed: boolean }).confirmed).toBe(true);
   });
 
-  it("route aussi le realm client (relayé par l'addon serveur)", async () => {
+  it("routes the client realm too, relayed by the server addon)", async () => {
     const res = await bridge.enqueue("cl", "read_panels", {});
     expect(res.ok).toBe(true);
     expect(res.data).toMatchObject({ echo: "read_panels" });
   });
 
-  it("émet les événements déposés par l'addon", async () => {
+  it("emits the events dropped by the addon", async () => {
     const got = new Promise<EventEnvelope>((resolve) => bridge.once("event", resolve));
     writeFileSync(
       join(evtDir, "1.json"),
@@ -85,7 +85,7 @@ describe("FileBridge", () => {
     expect(ev.payload).toMatchObject({ msg: "boom" });
   });
 
-  it("timeout si aucun addon ne répond", async () => {
+  it("times out when no addon answers", async () => {
     const solo = new FileBridge({ dir: mkdtempSync(join(tmpdir(), "gmod-mcp-fb2-")), audit, commandTimeoutMs: 150 });
     await expect(solo.enqueue("sv", "read_runtime", {})).rejects.toThrow(/timeout/);
     await solo.close();

@@ -4,7 +4,7 @@ import type { Config } from "../config.js";
 import { run } from "./run.js";
 import type { RunResult } from "./run.js";
 
-/** Chemins dérivés de la racine du repo. */
+/** Paths derived from the repo root. */
 export function paths(config: Config) {
   const root = config.repoRoot;
   return {
@@ -21,8 +21,8 @@ export function paths(config: Config) {
 }
 
 /**
- * Résout un addon (nom ou chemin) en dossier absolu.
- * Un nom simple est cherché sous `<root>/addons/<nom>`.
+ * Resolves an addon (name or path) to an absolute directory.
+ * A bare name is looked up under `<root>/addons/<name>`.
  */
 export function resolveAddonDir(config: Config, addon: string): string {
   if (isAbsolute(addon) && existsSync(addon)) return addon;
@@ -32,7 +32,7 @@ export function resolveAddonDir(config: Config, addon: string): string {
 }
 
 export interface BootState {
-  /** Offset d'octet dans gameLog marquant le début du boot courant. */
+  /** Byte offset into gameLog marking the start of the current boot. */
   offset: number;
   startedAt: number;
   map?: string;
@@ -64,9 +64,9 @@ export interface StartArgs {
 }
 
 /**
- * Démarre le serveur. La frontière de boot est capturée AVANT le lancement
- * (taille courante du gameLog) : tout ce qui est ajouté ensuite appartient au
- * boot courant, sans course avec les premières écritures du serveur.
+ * Starts the server. The boot boundary is captured BEFORE launching, as the current
+ * size of gameLog: everything appended afterwards belongs to this boot, with no race
+ * against the server's first writes.
  */
 export async function startServer(
   config: Config,
@@ -111,9 +111,9 @@ export function packageAddon(config: Config, addon: string): Promise<RunResult> 
 }
 
 /**
- * Lit le log de jeu depuis la frontière de boot (ou tout, si `sinceBoot=false`
- * ou pas de boot connu). Lecture binaire puis décodage utf8 ; les octets NUL
- * sont conservés tels quels et nettoyés par le parser runtime.
+ * Reads the game log from the boot boundary, or the whole file when `sinceBoot` is
+ * false or no boot is known. Read as binary then decoded as utf8; NUL bytes are kept
+ * as-is and cleaned up by the runtime parser.
  */
 export function readGameLog(config: Config, sinceBoot: boolean): string {
   const p = paths(config);

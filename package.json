@@ -1,7 +1,7 @@
 {
   "name": "gmod-mcp",
   "version": "0.0.0",
-  "description": "Serveur MCP local-first pour le dev assisté par IA d'addons Garry's Mod",
+  "description": "Local-first MCP server for AI-assisted Garry's Mod addon development",
   "license": "MIT",
   "type": "module",
   "bin": {

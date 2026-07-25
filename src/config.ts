@@ -3,24 +3,24 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 
 /**
- * Config projet, chargée depuis `<repoRoot>/.gmod-mcp/config.json` si présent,
- * sinon valeurs par défaut. Tout est optionnel dans le fichier : on complète.
+ * Project configuration, loaded from `<repoRoot>/.gmod-mcp/config.json` when present,
+ * otherwise defaults. Every field in the file is optional and gets filled in.
  */
 export const ConfigFile = z.object({
   /** Racine du repo GMod (contient tools/, addons/, srcds/). */
   repoRoot: z.string().optional(),
-  /** Addons ciblés par défaut pour lint/reload. */
+  /** Addons targeted by default for lint and reload. */
   addons: z.array(z.string()).default([]),
-  /** Outils autorisés sans confirmation. Vide = politique par défaut. */
+  /** Tools allowed without confirmation. Empty means the default policy. */
   toolAllowlist: z.array(z.string()).default([]),
-  /** Modules ESM de plugins à charger (chemins relatifs au repo). Chacun exporte `tools`. */
+  /** Plugin ESM modules to load, relative to the repo root. Each exports `tools`. */
   plugins: z.array(z.string()).default([]),
 });
 export type ConfigFile = z.infer<typeof ConfigFile>;
 
 export interface Config extends ConfigFile {
   repoRoot: string;
-  /** Dossier d'état runtime du daemon : `<repoRoot>/.gmod-mcp`. */
+  /** The daemon's runtime state directory: `<repoRoot>/.gmod-mcp`. */
   stateDir: string;
 }
 
@@ -31,7 +31,7 @@ function looksLikeRepoRoot(dir: string): boolean {
   return REPO_MARKERS.some((m) => existsSync(join(dir, m)));
 }
 
-/** Remonte l'arborescence depuis `start` jusqu'à trouver la racine du repo. */
+/** Walks up from `start` until it finds the repo root. */
 export function findRepoRoot(start: string): string | undefined {
   let dir = resolve(start);
   for (;;) {
@@ -43,13 +43,13 @@ export function findRepoRoot(start: string): string | undefined {
 }
 
 /**
- * Charge la config effective. Ordre de résolution de la racine :
- * 1. `GMOD_MCP_REPO` (env)  2. champ `repoRoot` du fichier  3. remontée depuis cwd.
+ * Loads the effective configuration. The root is resolved in this order:
+ * 1. `GMOD_MCP_REPO` (env)  2. the file's `repoRoot` field  3. walking up from cwd.
  */
 export function loadConfig(cwd: string = process.cwd()): Config {
   const envRoot = process.env.GMOD_MCP_REPO;
 
-  // On cherche d'abord un fichier de config via la racine env ou la remontée.
+  // Look for a config file first, using either the env root or the upward walk.
   const probeRoot = envRoot ?? findRepoRoot(cwd) ?? cwd;
   const configPath = join(probeRoot, ".gmod-mcp", "config.json");
 

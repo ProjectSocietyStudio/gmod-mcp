@@ -3,12 +3,12 @@ import { spawn } from "node:child_process";
 export interface RunOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  /** Tue le process au-delà de ce délai (ms). 0/undefined = pas de timeout. */
+  /** Kills the process past this deadline (ms). 0 or undefined means no timeout. */
   timeoutMs?: number;
 }
 
 export interface RunResult {
-  /** Code de sortie, ou null si tué par signal/timeout. */
+  /** Exit code, or null when killed by a signal or timeout. */
   code: number | null;
   stdout: string;
   stderr: string;
@@ -16,9 +16,9 @@ export interface RunResult {
 }
 
 /**
- * Exécute une commande sans passer par un shell (args explicites), collecte
+ * Runs a command without a shell (explicit argv) and collects
  * stdout/stderr et le code de sortie. Ne rejette jamais sur un code ≠ 0 :
- * l'appelant interprète le code (les scripts de l'atelier encodent l'info dedans).
+ * the caller interprets the exit code, since these scripts encode meaning in it.
  */
 export function run(
   command: string,
@@ -56,7 +56,7 @@ export function run(
   });
 }
 
-/** Retire les séquences d'échappement ANSI (couleurs, gras) d'un texte. */
+/** Strips ANSI escape sequences (colour, bold) from a string. */
 export function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\x1b\[[0-9;]*m/g, "");

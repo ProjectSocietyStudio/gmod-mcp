@@ -14,7 +14,7 @@ interface Pending {
 }
 
 export interface FileBridgeOptions {
-  /** Dossier partagé avec srcds : `<repoRoot>/srcds/garrysmod/data/gmod_mcp`. */
+  /** Directory shared with srcds: `<repoRoot>/srcds/garrysmod/data/gmod_mcp`. */
   dir: string;
   audit: AuditLog;
   scanIntervalMs?: number;
@@ -23,16 +23,16 @@ export interface FileBridgeOptions {
 
 /**
  * Transport bridge par **fichiers** dans le sandbox DATA de GMod — le daemon et
- * srcds partagent le filesystem, donc aucune dépendance réseau (contrairement à
- * `HTTP()` qui, mesuré, ne joint pas le daemon localhost depuis srcds).
+ * srcds share a filesystem, so there is no network dependency -- unlike `HTTP()`,
+ * which was measured not to reach a localhost daemon from srcds.
  *
- * Protocole : le daemon écrit `cmd/<id>.json` (atomique via .tmp+rename) ; l'addon
- * le lit, l'exécute, écrit `res/<id>.json`, et supprime le cmd. Les événements
+ * Protocol: the daemon writes `cmd/<id>.json` (atomically, via .tmp then rename); the
+ * addon reads it, runs it, writes `res/<id>.json` and deletes the command. Events
  * arrivent en `evt/<n>.json`. Le daemon scanne `res/` et `evt/` par intervalle.
  *
- * Les deux realms passent par le même canal fichier : les commandes `cl` sont
- * routées par l'addon serveur vers le client via net messages (relais), puis le
- * résultat revient dans `res/` — le client n'a pas besoin de partager le disque.
+ * Both realms share the same file channel: `cl` commands are relayed by the server
+ * addon to the client over net messages, and the result comes back in `res/`. The
+ * client therefore never needs to share the disk.
  */
 export class FileBridge extends EventEmitter implements Bridge {
   private readonly cmdDir: string;
@@ -52,7 +52,7 @@ export class FileBridge extends EventEmitter implements Bridge {
     this.evtDir = join(opts.dir, "evt");
     for (const d of [this.cmdDir, this.resDir, this.evtDir]) mkdirSync(d, { recursive: true });
     this.scanner = setInterval(() => this.scan(), opts.scanIntervalMs ?? 150);
-    // Ne pas empêcher le process de sortir à cause du timer.
+    // Do not keep the process alive just for this timer.
     this.scanner.unref?.();
   }
 
@@ -62,20 +62,20 @@ export class FileBridge extends EventEmitter implements Bridge {
     args: Record<string, unknown>,
     opts: { confirmed?: boolean } = {},
   ): Promise<ResultEnvelope> {
-    // sv et cl passent par le même canal ; l'addon serveur route les cl vers le client.
+    // sv and cl share the channel; the server addon routes cl commands to the client.
     const id = randomUUID();
     const cmd: CommandEnvelope = { id, tool, args, realm, ...(opts.confirmed ? { confirmed: true } : {}) };
 
     const promise = new Promise<ResultEnvelope>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        this.safeDelete(join(this.cmdDir, `${id}.json`)); // purge la commande non consommée
-        reject(new Error(`timeout: aucun résultat pour ${tool} (${this.commandTimeoutMs}ms) — srcds tourne, addon monté ?`));
+        this.safeDelete(join(this.cmdDir, `${id}.json`)); // drop the unconsumed command
+        reject(new Error(`timeout: no result for ${tool} after ${this.commandTimeoutMs}ms -- is srcds running with the addon mounted?`));
       }, this.commandTimeoutMs);
       this.pending.set(id, { resolve, reject, timer });
     });
 
-    // Écriture atomique : .tmp puis rename, pour que l'addon ne lise jamais un fichier partiel.
+    // Atomic write: .tmp then rename, so the addon never reads a partial file.
     const tmp = join(this.cmdDir, `${id}.json.tmp`);
     writeFileSync(tmp, JSON.stringify(cmd));
     renameSync(tmp, join(this.cmdDir, `${id}.json`));
@@ -84,12 +84,12 @@ export class FileBridge extends EventEmitter implements Bridge {
   }
 
   private scan(): void {
-    // Résultats
+    // Results
     for (const name of this.safeList(this.resDir)) {
       if (!name.endsWith(".json")) continue;
       const path = join(this.resDir, name);
       const parsed = this.readJson(path);
-      if (!parsed) continue; // fichier en cours d'écriture : on réessaiera au prochain scan
+      if (!parsed) continue; // file still being written; retry on the next scan
       const res = ResultEnvelope.safeParse(parsed);
       this.safeDelete(path);
       if (!res.success) continue;
@@ -100,7 +100,7 @@ export class FileBridge extends EventEmitter implements Bridge {
         p.resolve(res.data);
       }
     }
-    // Événements
+    // Events
     for (const name of this.safeList(this.evtDir)) {
       if (!name.endsWith(".json")) continue;
       const path = join(this.evtDir, name);
@@ -142,7 +142,7 @@ export class FileBridge extends EventEmitter implements Bridge {
     clearInterval(this.scanner);
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new Error("bridge fermé"));
+      p.reject(new Error("bridge closed"));
     }
     this.pending.clear();
     return Promise.resolve();

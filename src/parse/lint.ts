@@ -2,17 +2,17 @@ import type { Finding, Severity } from "../schemas.js";
 import { stripAnsi } from "../proc/run.js";
 
 /**
- * Format stable émis par glua-check.py:158 et glua-audit.py:
+ * Stable format emitted by glua-check.py:158 and glua-audit.py:
  *   `fichier:ligne: [SEVERITE] regle — msg`
- * (séparateur = tiret cadratin entouré d'espaces).
+ * (the separator is an em dash surrounded by spaces).
  */
 const PRIMARY =
   /^(?<file>[^:\n]+):(?<line>\d+): \[(?<sev>[A-Z]+)\] (?<rule>\S+) — (?<msg>.*)$/;
 
-/** Repli générique : toute ligne référençant `xxx.lua:N` (glualint, LS). */
+/** Generic fallback: any line referencing `xxx.lua:N` (glualint, language server). */
 const GENERIC = /(?<file>[^\s:]+\.lua):(?<line>\d+):?\s*(?<msg>.*)$/;
 
-/** En-tête de section produit par lint.sh:27 (`── 3/4 glua-check ...`). */
+/** Section header produced by lint.sh:27 (`-- 3/4 glua-check ...`). */
 const SECTION = /^──\s*(?<title>.+?)\s*$/;
 
 function toSeverity(raw: string): Severity {
@@ -33,10 +33,10 @@ function passOf(title: string): string {
 }
 
 /**
- * Parse la sortie de `tools/lint.sh` en findings structurés. Les lignes au format
- * stable (glua-check/glua-audit) sont pleinement décomposées ; les autres passes
- * (glualint, LS) sont captées en repli générique via `fichier.lua:ligne`. Les
- * lignes de résumé (`glua-check : N fichier(s)...`) sont ignorées.
+ * Parses `tools/lint.sh` output into structured findings. Lines in the stable format
+ * (glua-check, glua-audit) are fully decomposed; the other passes (glualint, language
+ * server) are caught by the generic `file.lua:line` fallback. Summary lines are
+ * ignored.
  */
 export function parseLintOutput(raw: string): Finding[] {
   const findings: Finding[] = [];
@@ -48,7 +48,7 @@ export function parseLintOutput(raw: string): Finding[] {
       pass = passOf(sec.groups["title"] ?? "");
       continue;
     }
-    if (/^(glua-check|glua-audit)\s*:/.test(line.trim())) continue; // résumés
+    if (/^(glua-check|glua-audit)\s*:/.test(line.trim())) continue; // summary lines
 
     const p = PRIMARY.exec(line);
     if (p?.groups) {

@@ -14,16 +14,16 @@ import { allTools } from "./tools/index.js";
 import { VERSION } from "./version.js";
 
 /**
- * Point d'entrée du serveur MCP gmod-mcp (transport stdio, local-first).
- * Lancé par Claude Code — donc : rien sur stdout (canal du protocole), logs sur
+ * Entry point of the gmod-mcp MCP server (stdio transport, local-first).
+ * Launched by Claude Code, so nothing may go to stdout (that is the protocol
  * stderr uniquement. Le bridge serveur passe par des fichiers dans le sandbox DATA
- * de GMod (`FileBridge`) — pas de réseau : mesuré, `HTTP()` de GMod ne joint pas le
+ * sandbox (`FileBridge`). No network: GMod's `HTTP()` was measured not to reach the
  * daemon localhost depuis srcds.
  */
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // Sous-commande `install` : écrit .mcp.json puis sort, sans démarrer le serveur.
+  // `install` subcommand: write .mcp.json and exit without starting the server.
   if (process.argv[2] === "install") {
     runInstall(config);
     return;
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const audit = new AuditLog(config.stateDir);
   audit.record({ kind: "daemon_start", data: { version: VERSION, repoRoot: config.repoRoot } });
 
-  // Transport bridge par fichiers, partagé avec srcds via le sandbox DATA de GMod.
+  // File-based bridge transport, shared with srcds through GMod's DATA sandbox.
   const gmodDataDir = join(config.repoRoot, "srcds", "garrysmod", "data", "gmod_mcp");
   const bridge = new FileBridge({ dir: gmodDataDir, audit });
 
@@ -52,12 +52,12 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
-    `gmod-mcp ${VERSION} prêt — repoRoot=${config.repoRoot} bridge=fichier(${gmodDataDir}) outils=${registry.list().length}\n`,
+    `gmod-mcp ${VERSION} ready -- repoRoot=${config.repoRoot} bridge=file(${gmodDataDir}) tools=${registry.list().length}\n`,
   );
 }
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.stack ?? err.message : String(err);
-  process.stderr.write(`gmod-mcp: échec au démarrage — ${message}\n`);
+  process.stderr.write(`gmod-mcp: failed to start -- ${message}\n`);
   process.exit(1);
 });

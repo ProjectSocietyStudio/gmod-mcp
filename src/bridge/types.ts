@@ -3,8 +3,8 @@ import type { ResultEnvelope } from "../schemas.js";
 
 /**
  * Interface commune des transports bridge (HTTP ou fichier). Les outils sv/cl
- * ne dépendent que de ceci — on peut changer de transport sans les toucher.
- * Émet `"event"` (EventEnvelope) pour les événements asynchrones du jeu.
+ * depend only on this, so the transport can change without touching them.
+ * Emits `"event"` (EventEnvelope) for asynchronous events coming from the game.
  */
 export interface Bridge extends EventEmitter {
   enqueue(

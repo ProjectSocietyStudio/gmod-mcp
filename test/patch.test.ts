@@ -16,7 +16,7 @@ function makeConfig(): Config {
 }
 
 describe("PatchEngine", () => {
-  it("applique un patch, écrit le fichier et produit un diff", async () => {
+  it("applies a patch, writes the file and produces a diff", async () => {
     const config = makeConfig();
     const engine = new PatchEngine(config);
     const patch = await engine.applyFile("addons/x/lua/a.lua", "print('v1')\n", "init");
@@ -26,7 +26,7 @@ describe("PatchEngine", () => {
     expect(patch.rationale).toBe("init");
   });
 
-  it("restaure l'état précédent d'un fichier modifié", async () => {
+  it("restores the previous state of a modified file", async () => {
     const config = makeConfig();
     const engine = new PatchEngine(config);
     await engine.applyFile("f.lua", "old\n", "create");
@@ -37,7 +37,7 @@ describe("PatchEngine", () => {
     expect(readFileSync(join(config.repoRoot, "f.lua"), "utf8")).toBe("old\n");
   });
 
-  it("restaure un fichier créé par le patch en le vidant", async () => {
+  it("restores a file created by the patch by emptying it", async () => {
     const config = makeConfig();
     const engine = new PatchEngine(config);
     const p = await engine.applyFile("brand_new.lua", "content\n", "create");
@@ -48,10 +48,10 @@ describe("PatchEngine", () => {
   it("refuse une cible hors du repo", async () => {
     const config = makeConfig();
     const engine = new PatchEngine(config);
-    await expect(engine.applyFile("../evil.lua", "x", "r")).rejects.toThrow(/périmètre/);
+    await expect(engine.applyFile("../evil.lua", "x", "r")).rejects.toThrow(/out of scope/);
   });
 
-  it("lève sur un id de patch inconnu", () => {
+  it("throws on an unknown patch id", () => {
     const config = makeConfig();
     const engine = new PatchEngine(config);
     expect(() => engine.restore("nope")).toThrow(/inconnu/);

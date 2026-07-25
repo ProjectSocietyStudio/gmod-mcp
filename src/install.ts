@@ -7,15 +7,15 @@ interface McpConfig {
   mcpServers?: Record<string, unknown>;
 }
 
-/** Chemin absolu de l'entrée du serveur MCP (dist/index.js), à côté de ce module. */
+/** Absolute path to the MCP server entry point (dist/index.js), next to this module. */
 function serverEntry(): string {
   return fileURLToPath(new URL("./index.js", import.meta.url));
 }
 
 /**
- * Écrit/fusionne l'entrée gmod-mcp dans `<repoRoot>/.mcp.json` (scope projet,
- * versionnable et partageable). Préserve les autres serveurs déjà déclarés.
- * Renvoie le chemin écrit et l'entrée posée.
+ * Writes or merges the gmod-mcp entry into `<repoRoot>/.mcp.json` (project scope, so
+ * it can be committed and shared). Other declared servers are preserved. Returns the
+ * path written and the entry that was set.
  */
 export function installProject(config: Config): { path: string; entry: unknown } {
   const path = join(config.repoRoot, ".mcp.json");
@@ -40,19 +40,19 @@ export function installProject(config: Config): { path: string; entry: unknown }
   return { path, entry };
 }
 
-/** Point d'entrée de la sous-commande `gmod-mcp install`. */
+/** Entry point of the `gmod-mcp install` subcommand. */
 export function runInstall(config: Config): void {
   const { path, entry } = installProject(config);
   const e = entry as { args: string[] };
   process.stdout.write(
     [
-      `gmod-mcp installé (scope projet) : ${path}`,
+      `gmod-mcp installed (project scope): ${path}`,
       "",
-      "Claude Code chargera le serveur au prochain démarrage dans ce repo.",
-      "Équivalent en ligne de commande :",
+      "Claude Code will load the server the next time it starts in this repo.",
+      "Command-line equivalent:",
       `  claude mcp add gmod-mcp -e GMOD_MCP_REPO=${config.repoRoot} -- node ${e.args[0]}`,
       "",
-      "Pense à builder d'abord : (cd gmod-mcp && pnpm install && pnpm build)",
+      "Remember to build first: (cd gmod-mcp && pnpm install && pnpm build)",
       "",
     ].join("\n"),
   );

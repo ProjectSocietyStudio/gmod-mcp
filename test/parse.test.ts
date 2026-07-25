@@ -4,13 +4,13 @@ import { parseRuntimeLog } from "../src/parse/runtime.js";
 
 const LINT_SAMPLE = `
 \x1b[1m── 3/4 glua-check (API & realms)\x1b[0m
-lua/autorun/server/sv_main.lua:12: [ERROR] realm-violation — \`render.SetColor\` est Client-only, appelé sans garde
+lua/autorun/server/sv_main.lua:12: [ERROR] realm-violation — \`render.SetColor\` is Client-only, called without a guard
 lua/autorun/server/sv_main.lua:40: [WARNING] api-unknown — \`Player:AddMoneys\` inconnu
 
 glua-check : 3 fichier(s), 1 erreur(s), 1 avertissement(s)
 
-\x1b[1m── 4/4 glua-audit (sécurité & performance)\x1b[0m
-lua/autorun/server/sv_net.lua:7: [ERROR] net-no-string — message net non enregistré via util.AddNetworkString
+\x1b[1m── 4/4 glua-audit (security & performance)\x1b[0m
+lua/autorun/server/sv_net.lua:7: [ERROR] net-no-string — net message not registered through util.AddNetworkString
 glua-audit : 3 fichier(s), 1 erreur(s), 0 avertissement(s)
 
 \x1b[32m✔ ...\x1b[0m

@@ -4,7 +4,7 @@ import { devTools } from "./dev.js";
 import { healthTool } from "./health.js";
 import { localTools } from "./local.js";
 
-/** Tous les outils enregistrés au boot. Les phases suivantes en ajoutent ici. */
+/** Every tool registered at startup. */
 export const allTools: AnyToolDef[] = [
   healthTool,
   ...localTools,

@@ -1,21 +1,21 @@
-# gmod_mcp_runlua (optionnel, DEV-ONLY)
+# gmod_mcp_runlua (optional, DEVELOPMENT ONLY)
 
-Ajoute le handler `run_lua` au bridge : exécution de Lua arbitraire côté serveur,
-gardée par confirmation (`confirm: true` côté MCP, `confirmed` propagé côté bridge).
+Adds the `run_lua` handler to the bridge: arbitrary server-side Lua execution, gated behind a
+confirmation (`confirm: true` on the MCP side, propagated as `confirmed` to the bridge).
 
-**Pourquoi séparé du bridge principal** — `run_lua` utilise `CompileString`, une
-exécution dynamique que `glua-audit` proscrit (à raison) pour tout addon vendable. Le
-bridge principal `gmod_mcp_bridge` reste donc 100 % lint-clean ; cette extension, elle,
-échoue volontairement `glua-audit` (`exec-dynamique`). C'est attendu.
+**Why it is kept out of the main bridge.** `run_lua` relies on `CompileString`, a form of
+dynamic execution that `glua-audit` forbids — rightly — for any addon meant to be sold. Keeping
+it here lets `gmod_mcp_bridge` stay entirely lint-clean, while this extension deliberately
+fails the `exec-dynamique` rule. That failure is expected, not a defect.
 
-**Ne jamais monter en production.** C'est un outil d'itération local.
+**Never mount this on a production server.** It is a local iteration tool.
 
-## Activer
+## Enable
 
 ```bash
-ln -s "$PWD/gmod-mcp/optional/gmod_mcp_runlua" ~/Workspace/gmod/addons/gmod_mcp_runlua
-cd ~/Workspace/gmod && ./tools/sync-server-config.sh
-# redémarrer le serveur
+ln -s /path/to/gmod-mcp/optional/gmod_mcp_runlua \
+      /path/to/srcds/garrysmod/addons/gmod_mcp_runlua
+# then restart the server
 ```
 
-Nécessite le bridge principal (`addons/gmod_mcp_bridge`) chargé.
+Requires the main bridge (`gmod_mcp_bridge`) to be loaded.

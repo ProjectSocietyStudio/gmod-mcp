@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Realm ciblé par une commande ou porté par un événement.
- * `local` = action côté daemon (lint, start-server, logs...), pas côté GMod.
+ * The realm a command targets, or that an event comes from.
+ * `local` means a daemon-side action (lint, start-server, logs), not a GMod one.
  */
 export const Realm = z.enum(["sv", "cl", "local"]);
 export type Realm = z.infer<typeof Realm>;
@@ -12,8 +12,8 @@ export type Severity = z.infer<typeof Severity>;
 
 /**
  * Enveloppe de commande daemon -> bridge (Phase 2+).
- * `confirmed` n'est posé par le daemon qu'après approbation humaine explicite
- * pour les outils gardés (ex. run_lua).
+ * `confirmed` is only set by the daemon after explicit human approval, and only for
+ * guarded tools such as run_lua.
  */
 export const CommandEnvelope = z.object({
   id: z.string().min(1),
@@ -24,7 +24,7 @@ export const CommandEnvelope = z.object({
 });
 export type CommandEnvelope = z.infer<typeof CommandEnvelope>;
 
-/** Résultat bridge -> daemon, corrélé par `id`. */
+/** Bridge to daemon result, correlated by `id`. */
 export const ResultEnvelope = z.object({
   id: z.string().min(1),
   ok: z.boolean(),
@@ -33,7 +33,7 @@ export const ResultEnvelope = z.object({
 });
 export type ResultEnvelope = z.infer<typeof ResultEnvelope>;
 
-/** Événement async bridge -> daemon (erreurs Lua, lignes de log, net...). */
+/** Asynchronous bridge to daemon event (Lua errors, log lines, net messages). */
 export const EventEnvelope = z.object({
   type: z.string().min(1),
   realm: Realm,
@@ -43,7 +43,7 @@ export const EventEnvelope = z.object({
 export type EventEnvelope = z.infer<typeof EventEnvelope>;
 
 /**
- * Finding unifié : sortie de lint statique OU erreur runtime parsée depuis les logs.
+ * Unified finding: either static lint output or a runtime error parsed from the logs.
  * C'est la forme que consomment l'agent et la validation engine.
  */
 export const Finding = z.object({
@@ -57,7 +57,7 @@ export const Finding = z.object({
 });
 export type Finding = z.infer<typeof Finding>;
 
-/** Un patch appliqué à un fichier, avec sa justification et son cycle de vie. */
+/** A patch applied to a file, with its rationale and lifecycle. */
 export const Patch = z.object({
   id: z.string().min(1),
   file: z.string(),
@@ -68,7 +68,7 @@ export const Patch = z.object({
 });
 export type Patch = z.infer<typeof Patch>;
 
-/** Contexte d'une itération de dev. */
+/** Context of a development iteration. */
 export const Session = z.object({
   id: z.string().min(1),
   task: z.string(),

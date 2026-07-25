@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-/** Types d'entrées d'audit. Étendu au fil des phases. */
+/** Audit entry kinds. */
 export type AuditKind =
   | "daemon_start"
   | "tool_call"
@@ -18,16 +18,16 @@ export interface AuditEntry {
   kind: AuditKind;
   sessionId?: string;
   commandId?: string;
-  /** Charge utile libre, dépendante du `kind`. */
+  /** Free-form payload, shaped by `kind`. */
   data?: Record<string, unknown>;
 }
 
 /**
- * Journal d'audit append-only en JSONL. Une ligne = un événement, corrélable
- * par `sessionId` + `commandId`. Écrit dans `<stateDir>/logs/audit.jsonl`.
+ * Append-only JSONL audit log. One line is one event, correlated by `sessionId`
+ * and `commandId`. Written to `<stateDir>/logs/audit.jsonl`.
  *
- * Écriture synchrone volontaire : les volumes sont faibles et on veut la
- * garantie que rien n'est perdu si le daemon meurt juste après une action.
+ * Writes are synchronous on purpose: volumes are low, and we want the guarantee
+ * that nothing is lost if the daemon dies right after an action.
  */
 export class AuditLog {
   private readonly file: string;
