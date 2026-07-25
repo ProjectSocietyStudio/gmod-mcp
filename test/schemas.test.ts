@@ -60,8 +60,6 @@ describe("schemas", () => {
 describe("ConfigFile", () => {
   it("remplit les défauts sur un objet vide", () => {
     const c = ConfigFile.parse({});
-    expect(c.bridgePort).toBe(27700);
-    expect(c.bridgeToken).toBe("");
     expect(c.addons).toEqual([]);
     expect(c.toolAllowlist).toEqual([]);
   });

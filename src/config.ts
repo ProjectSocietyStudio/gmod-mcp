@@ -9,10 +9,6 @@ import { z } from "zod";
 export const ConfigFile = z.object({
   /** Racine du repo GMod (contient tools/, addons/, srcds/). */
   repoRoot: z.string().optional(),
-  /** Port du serveur HTTP bridge, bind 127.0.0.1 uniquement (Phase 2+). */
-  bridgePort: z.number().int().min(1).max(65535).default(27700),
-  /** Jeton partagé daemon <-> bridge (Phase 2+). Vide = généré au boot. */
-  bridgeToken: z.string().default(""),
   /** Addons ciblés par défaut pour lint/reload. */
   addons: z.array(z.string()).default([]),
   /** Outils autorisés sans confirmation. Vide = politique par défaut. */

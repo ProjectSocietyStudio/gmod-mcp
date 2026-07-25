@@ -1,7 +1,5 @@
 {
   "repoRoot": ".",
-  "bridgePort": 27700,
-  "bridgeToken": "",
   "addons": ["gmod_mcp_bridge"],
   "toolAllowlist": [],
   "plugins": []

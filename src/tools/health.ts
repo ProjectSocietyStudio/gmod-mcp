@@ -15,7 +15,7 @@ export const healthTool = defineTool({
   realm: "local",
   inputSchema: {},
   handler: (_args, ctx) => {
-    const { repoRoot, stateDir, bridgePort } = ctx.config;
+    const { repoRoot, stateDir } = ctx.config;
     const scripts = ["lint.sh", "start-server.sh", "server-log.sh", "package-gma.sh"];
     const toolsPresent = Object.fromEntries(
       scripts.map((s) => [s, existsSync(join(repoRoot, "tools", s))]),
@@ -26,7 +26,6 @@ export const healthTool = defineTool({
       node: process.version,
       repoRoot,
       stateDir,
-      bridgePort,
       toolsPresent,
     };
   },

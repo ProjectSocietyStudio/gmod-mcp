@@ -10,8 +10,6 @@ function makeConfig(): Config {
   return {
     repoRoot,
     stateDir: join(repoRoot, ".gmod-mcp"),
-    bridgePort: 27700,
-    bridgeToken: "",
     addons: [],
     toolAllowlist: [],
   };
