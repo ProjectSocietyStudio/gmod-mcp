@@ -7,6 +7,9 @@ import { readGameLog } from "../src/proc/scripts.js";
 import { makeConfig } from "./helpers.js";
 
 const BOOT = "Initializing Steam libraries for LAN server\n";
+// The engine also prints this mid-boot, after addons mount. It must NOT be mistaken for
+// a boot boundary, or the start of the boot -- where load-time errors live -- is lost.
+const WORKSHOP = "Initializing Steam libraries for Workshop..\n";
 
 /**
  * Builds a repo whose game log holds two boots, optionally with a recorded boot offset
@@ -20,7 +23,7 @@ function makeRepo(recordedOffset?: number): Config {
 
   writeFileSync(
     join(repoRoot, "srcds", "garrysmod", "console.log"),
-    BOOT + "[ERROR] stale failure from the previous run\n" + BOOT + "all quiet\n",
+    BOOT + "[ERROR] stale failure from the previous run\n" + BOOT + "all quiet\n" + WORKSHOP,
   );
 
   if (recordedOffset !== undefined) {
@@ -50,6 +53,13 @@ describe("readGameLog", () => {
     expect(log).toContain("all quiet");
   });
 
+  it("does not mistake the mid-boot Workshop line for a boot boundary", () => {
+    // Matching the bare "Initializing Steam libraries" prefix would land here and drop
+    // everything before it, including any error raised while addons were loading.
+    const log = readGameLog(makeRepo(), true);
+    expect(log).toContain("all quiet");
+  });
+
   it("ignores a recorded offset left behind by an earlier boot", () => {
     const log = readGameLog(makeRepo(0), true);
     expect(log).not.toContain("stale failure");
@@ -60,7 +70,7 @@ describe("readGameLog", () => {
     // sit past the marker. The later of the two bounds is the correct one.
     const afterMarker = (BOOT + "[ERROR] stale failure from the previous run\n" + BOOT).length;
     const log = readGameLog(makeRepo(afterMarker), true);
-    expect(log).toBe("all quiet\n");
+    expect(log).toBe("all quiet\n" + WORKSHOP);
   });
 
   it("falls back to the whole log when the offset is past the end", () => {

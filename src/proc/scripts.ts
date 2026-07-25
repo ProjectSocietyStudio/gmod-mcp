@@ -114,8 +114,14 @@ export function packageAddon(config: Config, addon: string): Promise<RunResult> 
  * Marker the engine prints once per startup. Used to find the boot boundary from the
  * log's own content, which is the only method that works when the daemon did not start
  * the server itself.
+ *
+ * The trailing "for LAN server" is load-bearing, not decoration. The engine prints
+ * "Initializing Steam libraries" twice per boot -- once for the LAN server at startup,
+ * once more for Workshop well after addons mount. Matching the bare prefix would land
+ * on the later one and silently cut off the beginning of the boot, hiding exactly the
+ * errors that matter most: the ones an addon raises while loading.
  */
-const BOOT_MARKER = "Initializing Steam libraries";
+const BOOT_MARKER = "Initializing Steam libraries for LAN server";
 
 /**
  * Byte offset of the last boot marker in the log, or undefined when none is present.
