@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+
+# Daemon runtime state. Holds the bridge token, the audit trail of every Lua
+# call and patch, and file backups — never commit it.
+.gmod-mcp/
+
+# Local daemon configuration, derived from config.example.json.
+config.json
+
+# Machine-specific lua-language-server config: workspace.library holds absolute
+# paths to local GLua API definitions. Copy .luarc.example.json instead.
+.luarc.json

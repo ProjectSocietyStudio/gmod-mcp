@@ -1,0 +1,6 @@
+{
+  "title": "gmod_mcp_bridge",
+  "type": "tool",
+  "tags": ["roleplay"],
+  "ignore": [".git/*", "*.md", ".luarc.json", ".glualint.json"]
+}

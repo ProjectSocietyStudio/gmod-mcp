@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+
+  "//": "Copy to .luarc.json and point workspace.library at your local GLua API",
+  "//definitions": "definitions. Without them lua-language-server reports every GLua",
+  "//global": "global (util, istable, hook...) as undefined. Any scrape of the",
+  "//wiki": "Facepunch wiki in lua-language-server definition format will do.",
+
+  "runtime": {
+    "version": "LuaJIT",
+    "special": { "include": "require" },
+    "nonstandardSymbol": ["!", "!=", "&&", "||", "//", "/**/", "continue"]
+  },
+  "workspace": {
+    "library": [
+      "/absolute/path/to/glua-api"
+    ],
+    "ignoreDir": [],
+    "checkThirdParty": false,
+    "maxPreload": 5000
+  },
+  "diagnostics": {
+    "globals": ["GM", "GAMEMODE", "GMODMCP", "CAMI", "DarkRP", "RPExtraTeams", "TEAM_"],
+    "disable": ["lowercase-global"],
+    "neededFileStatus": {
+      "undefined-global": "Any",
+      "undefined-field": "Any"
+    },
+    "severity": {
+      "undefined-global": "Error",
+      "undefined-field": "Error"
+    }
+  },
+  "format": { "enable": false }
+}
