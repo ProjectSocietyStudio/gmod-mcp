@@ -12,6 +12,11 @@ export interface ToolContext {
   patch: PatchEngine;
   /** Present once the bridge transport has started (sv/cl realm tools). */
   bridge?: Bridge;
+  /**
+   * The registry itself, for tools that reason about other tools -- `batch` resolves
+   * each step's realm and guarded flag from it rather than trusting the caller.
+   */
+  registry?: ToolRegistry;
 }
 
 /** What a handler returns: a serialisable JSON object exposed to the agent. */

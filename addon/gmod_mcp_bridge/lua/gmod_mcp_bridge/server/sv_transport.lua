@@ -34,16 +34,33 @@ function GMODMCP.SendEvent(etype, payload)
     file.Write(name, util.TableToJSON({ type = etype, realm = "sv", ts = os.time(), payload = payload or {} }))
 end
 
+-- Completion closure handed to every handler, so one that spans ticks can answer later.
+--
+-- Armed once: a second call would write a result for an id the daemon has already
+-- resolved and dropped, leaving an orphan file in res/ that the next scan reads and
+-- discards -- or worse, correlates against a recycled id.
+function GMODMCP.MakeDone(id)
+    local fired = false
+    return function(ok, data, err)
+        if fired then return end
+        fired = true
+        GMODMCP.WriteResult(id, { id = id, ok = ok and true or false, data = data, error = err })
+    end
+end
+
+-- Runs a command and returns the result to write, or nil when the handler took
+-- responsibility for answering later (GMODMCP.ASYNC).
 local function handle(cmd)
     local handler = GMODMCP.Handlers[cmd.tool]
     if not handler then
-        return { id = cmd.id, ok = false, error = "handler inconnu: " .. tostring(cmd.tool) }
+        return { id = cmd.id, ok = false, error = "unknown handler: " .. tostring(cmd.tool) }
     end
     local ok, res = pcall(handler, cmd.args or {}, cmd)
-    if ok then
-        return { id = cmd.id, ok = true, data = res }
+    if not ok then
+        return { id = cmd.id, ok = false, error = tostring(res) }
     end
-    return { id = cmd.id, ok = false, error = tostring(res) }
+    if res == GMODMCP.ASYNC then return nil end
+    return { id = cmd.id, ok = true, data = res }
 end
 
 local function poll()
@@ -56,11 +73,13 @@ local function poll()
         local cmd = raw and util.JSONToTable(raw)
         if type(cmd) == "table" and cmd.id then
             if cmd.realm == "cl" and GMODMCP.RelayToClient then
-                -- Client command: relayed over net; the result will arrive
-                -- plus tard (net -> fichier res) via sv_client_relay.
+                -- Client command: relayed over net; the result arrives later
+                -- (net -> res file) through sv_client_relay.
                 GMODMCP.RelayToClient(cmd)
             else
-                file.Write(RES .. cmd.id .. ".json", util.TableToJSON(handle(cmd)))
+                cmd.done = GMODMCP.MakeDone(cmd.id)
+                local res = handle(cmd)
+                if res then file.Write(RES .. cmd.id .. ".json", util.TableToJSON(res)) end
             end
         end
     end

@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   registry.registerAll(allTools);
   registry.registerAll(await loadPlugins(config));
 
-  const ctx: ToolContext = { config, audit, bridge, patch: new PatchEngine(config) };
+  const ctx: ToolContext = { config, audit, bridge, registry, patch: new PatchEngine(config) };
   const server = createMcpServer(registry, ctx, { name: "gmod-mcp", version: VERSION });
 
   const shutdown = () => {

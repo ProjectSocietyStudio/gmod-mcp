@@ -1,4 +1,5 @@
 import type { AnyToolDef } from "../mcp/registry.js";
+import { batchTools } from "./batch.js";
 import { clientBridgeTools, serverBridgeTools } from "./bridge.js";
 import { devTools } from "./dev.js";
 import { healthTool } from "./health.js";
@@ -11,7 +12,5 @@ export const allTools: AnyToolDef[] = [
   ...serverBridgeTools,
   ...clientBridgeTools,
   ...devTools,
+  ...batchTools,
 ];
-
-/** @deprecated alias historique — utiliser allTools. */
-export const phase0Tools = allTools;
