@@ -196,9 +196,41 @@ export const clientBridgeTools: AnyToolDef[] = [
   }),
   bridgeTool({
     name: "inspect_panel",
-    description: "Details of the first panel of a given class, plus how many occur in the VGUI tree. screen_x/screen_y give absolute coordinates for clicking or capturing it.",
+    description:
+      "Finds a panel by NAME, class and/or displayed text, and returns its screen rectangle, its text, whether it holds keyboard focus, and the other matches. NAME is the registered vgui name (R_CharCreate, R_UI_Button, echat.textentry) and is what you want: `class` is the VGUI base the panel derives from, so a kit panel's class reads Label or Panel and searching by class can never find it. Off-screen panels are excluded unless onScreen:false -- a live tree measured 1408 panels of which 5 were on screen.",
     realm: "cl",
-    inputSchema: { class: z.string().min(1) },
+    inputSchema: {
+      name: z.string().min(1).optional().describe("Registered vgui name, e.g. R_UI_Button. Exact match."),
+      class: z.string().min(1).optional().describe("VGUI base class, e.g. Label, Panel, TextEntry. Exact match."),
+      contains: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Substring of the panel's displayed text, case-insensitive -- 'the button that says ÉCROUER'."),
+      index: z.number().int().min(1).default(1).describe("Which match to return when several qualify."),
+      onScreen: z
+        .boolean()
+        .default(true)
+        .describe("Keep only panels whose whole ancestry is visible. false includes closed menus."),
+    },
+  }),
+  bridgeTool({
+    name: "read_panel_text",
+    description:
+      "Dumps what the interface DISPLAYS, as text: name, class, screen rectangle and text content of each panel under a named root. Use this instead of capture_screen to assert a value -- a capture travels in 7KB chunks paced one per frame, and a number read off a compressed JPEG is not an assertion. Text comes from GetText, GetValue, or a .label/.text/.title field (kit buttons paint their label and answer '' to GetText). The list is depth-first with depth relative to the root, so the parent chain is recoverable from the ordering: the DTextEntry that follows the DLabel 'Prénom' is that field. capture_screen remains the tool for anything visual -- z-order, overlap, a missing glyph.",
+    realm: "cl",
+    inputSchema: {
+      root: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Panel to dump from, matched as a NAME first then as a class. Omitted, dumps the whole screen."),
+      index: z.number().int().min(1).default(1).describe("Which root when several match."),
+      maxDepth: z.number().int().min(0).max(32).default(8).describe("Depth below the root."),
+      onlyText: z.boolean().default(true).describe("Skip panels carrying no text. false dumps the structure too."),
+      onScreen: z.boolean().default(true).describe("Skip panels whose ancestry is hidden."),
+      limit: z.number().int().min(1).max(1000).default(120).describe("Maximum entries; the rest are counted in `truncated`."),
+    },
   }),
   bridgeTool({
     name: "capture_screen",

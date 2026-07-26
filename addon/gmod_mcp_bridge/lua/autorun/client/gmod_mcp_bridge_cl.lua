@@ -135,40 +135,247 @@ local function panelInfo(panel)
 end
 
 -- IsVisible() reports the panel's own flag and says nothing about its ancestors, so a
--- flat tree is mostly panels belonging to a closed menu -- the spawn menu alone accounts
--- for a hundred of them. on_screen carries the ancestors' visibility down the walk, which
--- is what "can I click this" actually depends on.
-local function walk(panel, depth, maxDepth, out, parentVisible)
+-- flat tree is mostly panels belonging to a closed menu -- measured on a live client,
+-- 1408 panels of which 5 were on screen, the spawn menu accounting for most of the rest.
+-- on_screen carries the ancestors' visibility down the walk, which is what "can I click
+-- this" actually depends on.
+--
+-- The walk keeps the PANEL HANDLE beside its info: every targeting tool below has to call
+-- methods on the match (GetText, RequestFocus, SetText), and a serialised info table
+-- cannot be called. Handles never leave the addon -- infosOf strips them before a result
+-- goes near util.TableToJSON.
+local function collect(panel, depth, maxDepth, out, parentVisible)
     if not IsValid(panel) or depth > maxDepth then return end
     local info = panelInfo(panel)
     info.depth = depth
     info.on_screen = parentVisible and info.visible or false
-    out[#out + 1] = info
+    out[#out + 1] = { panel = panel, info = info }
     for _, child in ipairs(panel:GetChildren()) do
-        walk(child, depth + 1, maxDepth, out, info.on_screen)
+        collect(child, depth + 1, maxDepth, out, info.on_screen)
     end
+end
+
+local function infosOf(entries)
+    local out = {}
+    for i = 1, #entries do out[i] = entries[i].info end
+    return out
+end
+
+-- ------------------------------------------------------------ panel targeting ---
+-- A panel's NAME and its CLASS are different strings, and the useful one is the name.
+-- vgui.Create("R_UI_Button") builds a registered table on top of a base class, and
+-- Panel:GetClassName returns the BASE -- "Label" for anything derived from DButton,
+-- "Panel" for a plain container. Measured on a live client: DButton/Label,
+-- SpawnIcon/Label, DTextEntry/TextEntry, DTree_Node/Panel. So `inspect_panel
+-- class:"R_UI_Button"` could only ever answer "no panel of class R_UI_Button" while the
+-- tree held several of them, and searching by class was the whole of the old API.
+--
+-- vgui.Create's third argument is the name and DEFAULTS TO THE CLASSNAME, which is why
+-- GetName carries the registered name unless the caller overrode it (echat does:
+-- "echat.textentry").
+
+-- Fields checked when a panel has no readable text through the API.
+--
+-- Painted text is invisible to GetText and GetValue: R_UI_Button calls SetText("") in
+-- Init and draws self.label from Paint, so a kit button displaying "ÉCROUER" answers "".
+-- This fallback is inelegant, and it is the difference between "the button that says
+-- ÉCROUER" being addressable and not.
+local TEXT_FIELDS = { "label", "text", "title" }
+
+--- Text a panel DISPLAYS, best effort. Returns the text and where it came from.
+local function panelText(panel)
+    -- pcall: Panel:GetText exists on every panel but only Label/TextEntry derivatives
+    -- answer it, and the others raise rather than return nil.
+    if isfunction(panel.GetText) then
+        local ok, value = pcall(panel.GetText, panel)
+        if ok and isstring(value) and value ~= "" then return value, "GetText" end
+    end
+    if isfunction(panel.GetValue) then
+        local ok, value = pcall(panel.GetValue, panel)
+        if ok and isstring(value) and value ~= "" then return value, "GetValue" end
+    end
+    for _, key in ipairs(TEXT_FIELDS) do
+        local value = panel[key]
+        if isstring(value) and value ~= "" then return value, "." .. key end
+    end
+    return nil, nil
+end
+
+local function hasTarget(args)
+    return isstring(args.name) or isstring(args.class) or isstring(args.contains)
+end
+
+--- Filters a collected tree by name, class and displayed text.
+--- Returns the matches honouring `onScreen`, and how many matched the criteria at all.
+---
+--- onScreen defaults to TRUE: an invisible panel cannot be clicked, and the flat tree is
+--- overwhelmingly closed menus, so the default has to be the useful one.
+local function matchTarget(args, entries)
+    local all, shown = {}, {}
+    local needle = isstring(args.contains) and string.lower(args.contains) or nil
+    for _, entry in ipairs(entries) do
+        local info = entry.info
+        local ok = true
+        if isstring(args.name) and info.name ~= args.name then ok = false end
+        if ok and isstring(args.class) and info.class ~= args.class then ok = false end
+        if ok and needle then
+            local text = panelText(entry.panel)
+            ok = text ~= nil and string.find(string.lower(text), needle, 1, true) ~= nil
+        end
+        if ok then
+            all[#all + 1] = entry
+            if info.on_screen then shown[#shown + 1] = entry end
+        end
+    end
+    if args.onScreen == false then return all, #all end
+    return shown, #all
+end
+
+--- Whole VGUI tree, as {panel, info} pairs. Depth 32 is the practical ceiling: the
+--- deepest live tree measured (spawn menu open) reached 17.
+local function wholeTree()
+    local entries = {}
+    collect(vgui.GetWorldPanel(), 0, 32, entries, true)
+    return entries
+end
+
+--- Resolves exactly one target panel from an already-collected tree, or raises something
+--- the caller can act on. `index` picks among several matches, `contains` narrows by
+--- displayed text. Returns the panel, its info, how many matched, and the matches.
+local function resolveIn(args, entries)
+    if not hasTarget(args) then
+        error("a target needs name (registered vgui name, e.g. R_UI_Button), class (VGUI base, e.g. Label) or contains (displayed text)")
+    end
+    local matches, total = matchTarget(args, entries)
+    if #matches == 0 then
+        error(string.format(
+            "no panel matched name=%s class=%s contains=%s. %d matched the criteria but are off screen (pass onScreen:false to include them). NAMES are the registered vgui names (R_CharCreate, R_UI_Button); CLASSES are the VGUI bases (Panel, Label, TextEntry) -- searching a kit panel by class never matches.",
+            tostring(args.name), tostring(args.class), tostring(args.contains), total - #matches))
+    end
+    local index = math.floor(tonumber(args.index) or 1)
+    local chosen = matches[index]
+    if not chosen then
+        error(string.format("index %d out of range: %d panel(s) matched (use `contains` to narrow by displayed text)", index, #matches))
+    end
+    return chosen.panel, chosen.info, total, matches
+end
+
+--- resolveIn against a freshly collected tree, for callers that need nothing else.
+local function resolveTarget(args)
+    return resolveIn(args, wholeTree())
+end
+
+--- Compact form of a match, for listing alternatives without a second round trip.
+local function briefOf(entry)
+    local info = entry.info
+    return {
+        name = info.name,
+        class = info.class,
+        depth = info.depth,
+        screen_x = info.screen_x,
+        screen_y = info.screen_y,
+        w = info.w,
+        h = info.h,
+        text = panelText(entry.panel),
+    }
 end
 
 H.read_panels = function(args)
     local maxDepth = isnumber(args.maxDepth) and args.maxDepth or 6
     local out = {}
-    walk(vgui.GetWorldPanel(), 0, maxDepth, out, true)
-    return { count = #out, panels = out }
+    collect(vgui.GetWorldPanel(), 0, maxDepth, out, true)
+    return { count = #out, panels = infosOf(out) }
 end
 
 H.inspect_panel = function(args)
-    if not isstring(args.class) then error("class (string) is required") end
-    local flat = {}
-    walk(vgui.GetWorldPanel(), 0, 32, flat, true)
-    local found, matches = nil, 0
-    for _, info in ipairs(flat) do
-        if info.class == args.class then
-            matches = matches + 1
-            if not found then found = info end
+    local panel, info, total, matches = resolveIn(args, wholeTree())
+    info.text, info.text_source = panelText(panel)
+    -- Whether THIS panel holds keyboard focus, because "the characters went nowhere" is
+    -- the most common client-side failure and this is the fact that explains it.
+    info.has_focus = vgui.GetKeyboardFocus() == panel
+
+    -- The other matches, so choosing an index does not cost a second round trip.
+    local brief = {}
+    for i = 1, math.min(#matches, 16) do brief[i] = briefOf(matches[i]) end
+
+    return {
+        match = info,
+        total_matches = #matches,
+        total_matching_criteria = total,
+        matches = brief,
+    }
+end
+
+-- Reading the interface as TEXT.
+--
+-- Before this the only way to know what a screen displayed was capture_screen: a whole
+-- proof session asserted budgets, attribute values and trait costs by eye on compressed
+-- JPEG, which is not an assertion and cannot survive a resolution change. Text is two
+-- orders of magnitude cheaper -- a capture travels in 7 KB chunks paced one per frame --
+-- but only while the dump stays small, so the defaults are narrow on purpose: one named
+-- subtree, on-screen only, and only panels that actually carry text.
+--
+-- `depth` is relative to the root and the list is depth-first, so the parent chain is
+-- recoverable from the ordering alone. That matters for a form: the DTextEntry that
+-- follows the DLabel "Prénom" is the prénom field, and nothing else identifies it.
+H.read_panel_text = function(args)
+    local rootPanel, rootInfo = vgui.GetWorldPanel(), nil
+    if isstring(args.root) then
+        local entries = wholeTree()
+        -- Name first, class second: a name is what a kit registers and what a caller has
+        -- in hand. Trying only one of the two would fail on half the panels in the tree.
+        local byName = matchTarget({ name = args.root, onScreen = args.onScreen }, entries)
+        local chosen = byName[math.floor(tonumber(args.index) or 1)]
+        if not chosen then
+            local byClass = matchTarget({ class = args.root, onScreen = args.onScreen }, entries)
+            chosen = byClass[math.floor(tonumber(args.index) or 1)]
+        end
+        if not chosen then
+            error("no panel named or classed '" .. args.root .. "' (names are the registered vgui names; pass onScreen:false to include hidden panels)")
+        end
+        rootPanel, rootInfo = chosen.panel, chosen.info
+    end
+
+    local maxDepth = isnumber(args.maxDepth) and args.maxDepth or 8
+    local limit = math.floor(tonumber(args.limit) or 120)
+    local onlyText = args.onlyText ~= false
+    local onScreen = args.onScreen ~= false
+
+    local entries = {}
+    collect(rootPanel, 0, maxDepth, entries, rootInfo == nil or rootInfo.on_screen)
+
+    local out, truncated = {}, 0
+    for _, entry in ipairs(entries) do
+        local info = entry.info
+        if info.on_screen or not onScreen then
+            local text, source = panelText(entry.panel)
+            if text or not onlyText then
+                if #out >= limit then
+                    truncated = truncated + 1
+                else
+                    out[#out + 1] = {
+                        depth = info.depth,
+                        name = info.name,
+                        class = info.class,
+                        text = text,
+                        text_source = source,
+                        screen_x = info.screen_x,
+                        screen_y = info.screen_y,
+                        w = info.w,
+                        h = info.h,
+                    }
+                end
+            end
         end
     end
-    if not found then error("no panel of class " .. args.class) end
-    return { match = found, total_matches = matches }
+
+    return {
+        root = rootInfo or { name = "WorldPanel", class = vgui.GetWorldPanel():GetClassName() },
+        count = #out,
+        truncated = truncated,
+        considered = #entries,
+        panels = out,
+    }
 end
 
 H.read_client_convars = function(args)
