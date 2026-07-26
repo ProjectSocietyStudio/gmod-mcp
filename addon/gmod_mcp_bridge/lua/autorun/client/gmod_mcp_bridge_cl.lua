@@ -532,33 +532,66 @@ H.read_view = function()
         } or { hit_world = tr.Hit },
         cursor = { x = mx, y = my, visible = vgui.CursorVisible() },
         -- Positive confirmation that a click would land somewhere, instead of inferring
-        -- it from pixels afterwards.
+        -- it from pixels afterwards. The NAME is the addressable one -- a class of
+        -- "Label" identifies nothing, while "R_UI_Button" is what a target names.
         hovered = IsValid(hovered) and hovered:GetClassName() or nil,
+        hovered_name = IsValid(hovered) and hovered:GetName() or nil,
         keyboard_focus = IsValid(focus) and focus:GetClassName() or nil,
+        keyboard_focus_name = IsValid(focus) and focus:GetName() or nil,
+        -- What the focused field currently holds: "did my text land" without a capture.
+        keyboard_focus_text = IsValid(focus) and panelText(focus) or nil,
         input_mode = I.mode or "off",
         input_locked_for = I.deadline and math.max(0, math.Round(I.deadline - RealTime(), 1)) or 0,
         screen = { w = ScrW(), h = ScrH() },
     }
 end
 
---- Multi-frame click. The cursor must already be where the click lands BEFORE the press
---- fires: vgui.GetHoveredPanel is documented as lagging a frame, so moving and pressing
---- in the same frame is the first reason a synthetic click does nothing.
-local function clickSequence(cmd, x, y, code)
+--- Runs fn on the NEXT frame and answers the command with what it returns.
+---
+--- Focus and hover are both resolved a frame late in vgui, so "do X, then observe X"
+--- inside one frame is the single most common reason a synthetic gesture appears to do
+--- nothing. A frame costs ~15ms against a 400ms round trip: never worth saving.
+local function afterFrame(cmd, fn)
+    local hookName = "gmod_mcp_frame_" .. cmd.id
+    hook.Add("Think", hookName, function()
+        hook.Remove("Think", hookName)
+        local ok, res = pcall(fn)
+        if ok then cmd.done(true, res) else cmd.done(false, nil, tostring(res)) end
+    end)
+end
+
+--- Frames spent settling before the press. See clickSequence.
+local SETTLE_FRAMES = 2
+
+--- Multi-frame click, self-sufficient: it moves the cursor, lets hover settle, presses,
+--- then releases.
+---
+--- An isolated `click` used to do nothing and the SAME click preceded by `move_cursor`
+--- worked; three clicks were lost before anyone suspected the tool rather than the
+--- coordinates. Two things were happening, and both need a frame. vgui.GetHoveredPanel
+--- lags a frame, so pressing in the frame the cursor moved hits whatever was hovered
+--- before. And `click` switches the input mode to "ui", which turns the screen clicker
+--- on -- the cursor only becomes real to vgui on the following frame, and enabling it
+--- can move the cursor, which is why the position is re-asserted on every settle frame
+--- rather than set once.
+local function clickSequence(cmd, x, y, code, target)
     input.SetCursorPos(x, y)
     local hookName = "gmod_mcp_click_" .. cmd.id
     local frame = 0
     -- Built here rather than inside the hook: it runs once, but a table literal in a
     -- per-frame hook is a habit the perf lint is right to flag.
-    local result = { clicked = { x = x, y = y } }
+    local result = { clicked = { x = x, y = y }, target = target }
 
     hook.Add("Think", hookName, function()
         frame = frame + 1
-        if frame == 1 then
+        if frame <= SETTLE_FRAMES then
+            input.SetCursorPos(x, y)
+        elseif frame == SETTLE_FRAMES + 1 then
             local panel = vgui.GetHoveredPanel()
             result.hovered = IsValid(panel) and panel:GetClassName() or nil
+            result.hovered_name = IsValid(panel) and panel:GetName() or nil
             gui.InternalMousePressed(code)
-        elseif frame >= 2 then
+        else
             hook.Remove("Think", hookName)
             gui.InternalMouseReleased(code)
             cmd.done(true, result)
@@ -611,23 +644,140 @@ ACTIONS.move_cursor = function(args)
     return { x = tonumber(args.x) or 0, y = tonumber(args.y) or 0 }
 end
 
+--- Clicks a panel by NAME (or class, or displayed text) instead of by pixel. A named
+--- click survives a resolution change; a pixel computed from a three-second-old JPEG
+--- does not, and every click of the proof session was one of those.
 ACTIONS.click = function(args, cmd)
     local code = MOUSE_CODES[args.button or "left"]
     if not code then error("button must be left, right or middle") end
+
+    local x, y, target
+    if hasTarget(args) then
+        local panel, info = resolveTarget(args)
+        local sx, sy = panel:LocalToScreen(0, 0)
+        local w, h = panel:GetSize()
+        x, y = math.floor(sx + w * 0.5), math.floor(sy + h * 0.5)
+        -- Reported, not refused: a container with mouse input off still lets the click
+        -- through to a child. But a panel that will never answer a click looks exactly
+        -- like a click that missed, so the fact has to travel with the result.
+        target = { name = info.name, class = info.class, screen_x = sx, screen_y = sy,
+                   w = w, h = h, mouse_input = info.mouse_input, text = panelText(panel) }
+    else
+        x, y = math.floor(tonumber(args.x) or 0), math.floor(tonumber(args.y) or 0)
+    end
+
     GMODMCP.Input.SetMode("ui")
-    clickSequence(cmd, math.floor(tonumber(args.x) or 0), math.floor(tonumber(args.y) or 0), code)
+    clickSequence(cmd, x, y, code, target)
     return GMODMCP.ASYNC
 end
 
-ACTIONS.type = function(args)
-    if not isstring(args.text) then error("text (string) is required for type") end
+--- Sends the characters and reports where they landed.
+local function typeInto(args, target, panel)
     -- InternalKeyTyped takes an ASCII code and reaches whatever holds keyboard focus.
     -- InternalKeyCodeTyped takes a KEY_ enum instead, which a DTextEntry ignores.
     for i = 1, #args.text do
         gui.InternalKeyTyped(string.byte(args.text, i))
     end
     local focus = vgui.GetKeyboardFocus()
-    return { typed = #args.text, keyboard_focus = IsValid(focus) and focus:GetClassName() or nil }
+    return {
+        typed = #args.text,
+        target = target,
+        -- The field read back: the only honest answer to "did it work". `typed: 12` was
+        -- reported by the old action while nothing whatsoever had been entered.
+        value = IsValid(panel) and panelText(panel) or nil,
+        keyboard_focus = IsValid(focus) and focus:GetClassName() or nil,
+        keyboard_focus_name = IsValid(focus) and focus:GetName() or nil,
+    }
+end
+
+--- Character-by-character typing. Exercises the panel's key handlers, which set_text
+--- deliberately does not -- but it needs the field to hold keyboard focus, so give it a
+--- target unless something already has focus.
+ACTIONS.type = function(args, cmd)
+    if not isstring(args.text) then error("text (string) is required for type") end
+    if not hasTarget(args) then return typeInto(args, nil, nil) end
+
+    local panel, info = resolveTarget(args)
+    -- The panel system only owns the keyboard in "ui" mode; in "world" mode the engine
+    -- routes keys to the game and the focused entry never sees them.
+    GMODMCP.Input.SetMode("ui")
+    if isfunction(panel.RequestFocus) then panel:RequestFocus() end
+    -- Focus lands a frame later. Typing in the same frame is how the original action
+    -- reported `typed: 12, keyboard_focus: "Panel"` with an empty field.
+    afterFrame(cmd, function() return typeInto(args, info, panel) end)
+    return GMODMCP.ASYNC
+end
+
+-- Writing a value into a field -- THE blocking gap, and the reason a character could not
+-- be created for a whole session.
+--
+-- A synthetic click does not give keyboard focus to a DTextEntry, so `type` reported
+-- `typed: N` and `keyboard_focus: "Panel"` while the characters went nowhere. Verified
+-- twice on R_CharCreate. So go through the API the panel exposes instead of pretending
+-- to be a keyboard.
+--
+-- Panel:SetText, NOT DTextEntry:SetValue: SetValue is documented not to change the text
+-- while the entry is being typed in, and RequestFocus above puts it in exactly that
+-- state. SetValue's other half -- calling OnValueChange -- is reproduced explicitly.
+
+--- Calls one notification if the panel has it, recording whether it ran or raised.
+local function fireOne(fired, panel, name, ...)
+    local fn = panel[name]
+    if not isfunction(fn) then return false end
+    local ok, err = pcall(fn, panel, ...)
+    fired[#fired + 1] = ok and name or (name .. " raised: " .. tostring(err))
+    return ok
+end
+
+--- Fires the change notifications a real keystroke would, once each.
+---
+--- This is the half that is easy to skip and impossible to notice: a silent SetText
+--- leaves every validation, every enable/disable of a submit button and every convar
+--- binding in its previous state, so the field reads as filled and the form still
+--- refuses. The order mirrors the real path: TextEntry:OnTextChanged is what the engine
+--- calls, DTextEntry implements it by updating the bound convar and -- when
+--- SetUpdateOnType is on -- calling OnValueChange. So OnValueChange is only called here
+--- when OnTextChanged did not already do it, otherwise validation would run twice.
+--- OnChange belongs to no DTextEntry but custom entries define it.
+local function notifyChange(panel, text, alsoEnter)
+    local fired = {}
+    local textChanged = fireOne(fired, panel, "OnTextChanged")
+    local updateOnType = isfunction(panel.GetUpdateOnType) and panel:GetUpdateOnType() == true
+    if not (textChanged and updateOnType) then
+        fireOne(fired, panel, "OnValueChange", text)
+    end
+    fireOne(fired, panel, "OnChange", text)
+    -- Many forms only validate or submit on Enter. Opt-in: it can send a chat line.
+    if alsoEnter then fireOne(fired, panel, "OnEnter", text) end
+    return fired
+end
+
+ACTIONS.set_text = function(args)
+    if not isstring(args.text) then error("text (string) is required for set_text") end
+    local panel, info = resolveTarget(args)
+    if not isfunction(panel.SetText) then
+        error("panel " .. tostring(info.name) .. " (" .. tostring(info.class) .. ") has no SetText -- it is not a text field")
+    end
+
+    local before = panelText(panel)
+    -- The input mode is deliberately NOT switched: this path needs no keyboard, and
+    -- turning the screen clicker on would put a cursor on a human's screen for nothing.
+    if args.focus ~= false and isfunction(panel.RequestFocus) then panel:RequestFocus() end
+    panel:SetText(args.text)
+    if isfunction(panel.SetCaretPos) then pcall(panel.SetCaretPos, panel, #args.text) end
+    local fired = notifyChange(panel, args.text, args.enter == true)
+
+    local focus = vgui.GetKeyboardFocus()
+    return {
+        target = info,
+        text = args.text,
+        previous = before,
+        -- Read back through the same accessor the UI uses: this is the assertion.
+        value = panelText(panel),
+        fired = fired,
+        has_focus = focus == panel,
+        keyboard_focus_name = IsValid(focus) and focus:GetName() or nil,
+    }
 end
 
 ACTIONS.key_ui = function(args)

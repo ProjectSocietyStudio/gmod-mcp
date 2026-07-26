@@ -101,4 +101,21 @@ describe("TS inputSchema matches the Lua handlers", () => {
     const def = serverBridgeTools.find((t) => t.name === "read_timers");
     expect(declaredKeys(def!)).toContain("names");
   });
+
+  /**
+   * `client_input` multiplexes on `action`, so its enum is a second contract with the Lua
+   * ACTIONS table -- and a looser one than the argument keys: an action the TS enum omits
+   * is unreachable (zod refuses the call before it is sent), while one the Lua lacks
+   * fails only after a full client round trip, with a list of what it does have.
+   */
+  it("client_input's action enum is exactly the Lua ACTIONS table", () => {
+    const source = readFileSync(LUA_SOURCES.cl[0]!, "utf8");
+    const luaActions = [...source.matchAll(/^ACTIONS\.(\w+)\s*=\s*function/gm)].map((m) => m[1]!);
+    const def = clientBridgeTools.find((t) => t.name === "client_input")!;
+    const shape = def.inputSchema as z.ZodRawShape;
+    const action = shape["action"] as z.ZodEnum<[string, ...string[]]>;
+
+    expect(luaActions.length).toBeGreaterThan(0);
+    expect([...action.options].sort()).toEqual([...luaActions].sort());
+  });
 });

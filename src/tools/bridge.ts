@@ -276,7 +276,7 @@ export const clientBridgeTools: AnyToolDef[] = [
   bridgeTool({
     name: "client_input",
     description:
-      "Drives the connected GMod client: movement, aim, keys, Derma clicks, typing, chat. Modal -- 'world' drives movement through CreateMove, 'ui' hands input to the panel system, and the two are mutually exclusive; the action switches mode for you. Durations are SECONDS (CreateMove runs at the client's cmdrate, so tick counts are not a duration), clamped to 5s, and everything resets after 30s or on `gmod_mcp_release` in the client console. Follow with read_view or capture_screen to see the effect -- batch them with settleMs so the observation is not taken from the frame before the action.",
+      "Drives the connected GMod client: movement, aim, keys, Derma clicks, typing, chat. Modal -- 'world' drives movement through CreateMove, 'ui' hands input to the panel system, and the two are mutually exclusive; the action switches mode for you. Durations are SECONDS (CreateMove runs at the client's cmdrate, so tick counts are not a duration), clamped to 5s, and everything resets after 30s or on `gmod_mcp_release` in the client console. To fill a form use `set_text` (targets a field by name and fires its change notification); `type` sends real keystrokes and needs a target or an already-focused field. `click` takes a NAMED target as well as x/y and is self-sufficient -- it moves the cursor, waits for hover to settle, presses and releases, so no `move_cursor` is needed first. Follow with read_view or read_panel_text to see the effect.",
     realm: "cl",
     inputSchema: {
       action: z.enum([
@@ -288,6 +288,7 @@ export const clientBridgeTools: AnyToolDef[] = [
         "click",
         "move_cursor",
         "type",
+        "set_text",
         "key_ui",
         "scroll",
         "select_weapon",
@@ -306,10 +307,37 @@ export const clientBridgeTools: AnyToolDef[] = [
         .int()
         .optional()
         .describe("press/release: IN_ bit (IN_ATTACK 1, IN_JUMP 2, IN_DUCK 4, IN_FORWARD 8, IN_BACK 16, IN_USE 32, IN_MOVELEFT 512, IN_MOVERIGHT 1024, IN_ATTACK2 2048, IN_RELOAD 8192, IN_SPEED 131072). key_ui: a KEY_ enum instead."),
-      x: z.number().int().optional().describe("click/move_cursor: screen X."),
-      y: z.number().int().optional().describe("click/move_cursor: screen Y."),
+      x: z.number().int().optional().describe("click/move_cursor: screen X. Ignored when a named target is given."),
+      y: z.number().int().optional().describe("click/move_cursor: screen Y. Ignored when a named target is given."),
       button: z.enum(["left", "right", "middle"]).optional().describe("click: which mouse button."),
-      text: z.string().optional().describe("type: characters to send to the focused panel. say: chat message."),
+      text: z
+        .string()
+        .optional()
+        .describe("set_text: the value to put in the field. type: characters to send. say: chat message."),
+      name: z
+        .string()
+        .optional()
+        .describe(
+          "click/type/set_text: target the panel with this registered vgui name (R_UI_Button, DTextEntry). Not the class -- a kit panel's class is its VGUI base.",
+        ),
+      class: z.string().optional().describe("click/type/set_text: target by VGUI base class (Label, TextEntry, Panel)."),
+      contains: z
+        .string()
+        .optional()
+        .describe("click/type/set_text: narrow the target to panels whose displayed text contains this (case-insensitive)."),
+      index: z.number().int().min(1).optional().describe("click/type/set_text: which match to act on when several qualify."),
+      onScreen: z
+        .boolean()
+        .optional()
+        .describe("click/type/set_text: default true, only panels whose whole ancestry is visible. false reaches hidden ones."),
+      focus: z
+        .boolean()
+        .optional()
+        .describe("set_text: default true, calls RequestFocus first so the field's own focus logic runs."),
+      enter: z
+        .boolean()
+        .optional()
+        .describe("set_text: also fire the field's OnEnter, for forms that only validate or submit on Enter. Off by default -- on a chat entry it sends the line."),
       delta: z.number().int().optional().describe("scroll: wheel delta."),
       weapon: z.string().optional().describe("select_weapon: weapon class the player is carrying."),
       mode: z.enum(["off", "world", "ui"]).optional().describe("mode: which input mode to switch to."),
