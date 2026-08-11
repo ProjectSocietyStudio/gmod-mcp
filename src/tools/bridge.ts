@@ -150,7 +150,9 @@ export const serverBridgeTools: AnyToolDef[] = [
   }),
   bridgeTool({
     name: "run_console_command",
-    description: "Runs a server console command (game.ConsoleCommand -- queued, around 0.25s of latency).",
+    description:
+      "Runs a server console command (game.ConsoleCommand -- queued, around 0.25s of latency). " +
+      "Read the result back in a SEPARATE call: the command has not run when this one returns.",
     realm: "sv",
     inputSchema: { command: z.string().min(1) },
   }),
@@ -170,7 +172,13 @@ export const serverBridgeTools: AnyToolDef[] = [
   bridgeTool({
     name: "run_lua",
     description:
-      "GUARDED. Runs arbitrary Lua server-side (RunString) and returns the resulting value. Requires confirm:true. Audited.",
+      "GUARDED. Runs arbitrary Lua server-side (RunString) and returns the resulting value. " +
+      "Requires confirm:true. Audited. " +
+      "WARNING: console commands are QUEUED. A snippet that calls RunConsoleCommand or " +
+      "game.ConsoleCommand and then reads the cvar back in the same snippet reads the OLD " +
+      "value -- the command runs after this execution ends, so the read is not a failure, it " +
+      "is simply early. Split it into two calls, or use `batch` with settleMs between the " +
+      "steps.",
     realm: "sv",
     guarded: true,
     inputSchema: {
