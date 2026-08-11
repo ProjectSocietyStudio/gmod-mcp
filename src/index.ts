@@ -5,6 +5,28 @@ import { FileBridge } from "./bridge/filebridge.js";
 import { loadConfig } from "./config.js";
 import { AuditLog } from "./logger.js";
 import { createMcpServer } from "./mcp/server.js";
+
+/**
+ * Handed to the client at connection time.
+ *
+ * With tool search, a client no longer loads every tool definition upfront: this prose
+ * may be the only thing it reads before deciding whether to look for our tools at all.
+ * So it says what the server is FOR and when to reach for it -- not how each tool works,
+ * which the tool definitions already carry.
+ */
+const INSTRUCTIONS = `Live bridge to the Project Society Garry's Mod dev server, plus local addon tooling.
+
+Reach for it to: observe a running srcds (players, entities, hooks, convars, timers,
+net messages) and the connected client (panels, view, console, screenshots); act in the
+world (spawn, teleport, freeze, set DarkRP money/job, force a hook); lint, patch, hot-reload
+and validate addon Lua without restarting; read server or client logs since the last boot.
+
+Realms: \`sv\` needs srcds running, \`cl\` also needs a human client connected, \`local\`
+needs neither. Tools that mutate the world or a file are guarded and take confirm:true.
+Use \`batch\` to run up to 32 sv steps in one round-trip instead of many calls.
+
+It does NOT do offline map file work -- .vmf, .bsp, entity-lump patches, the Source
+compilers. That is hammer-mcp.`;
 import { ToolRegistry } from "./mcp/registry.js";
 import type { ToolContext } from "./mcp/registry.js";
 import { PatchEngine } from "./patch/engine.js";
@@ -52,7 +74,11 @@ async function main(): Promise<void> {
   registry.registerAll(await loadPlugins(config));
 
   const ctx: ToolContext = { config, audit, bridge, registry, patch: new PatchEngine(config) };
-  const server = createMcpServer(registry, ctx, { name: "gmod-mcp", version: VERSION });
+  const server = createMcpServer(registry, ctx, {
+    name: "gmod-mcp",
+    version: VERSION,
+    instructions: INSTRUCTIONS,
+  });
 
   const shutdown = () => {
     void bridge.close().finally(() => process.exit(0));
