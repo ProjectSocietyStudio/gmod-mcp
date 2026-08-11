@@ -11,6 +11,7 @@ export type AuditKind =
   | "tool_result"
   | "bridge_command"
   | "bridge_event"
+  | "bridge_lock_reclaimed"
   | "patch_apply"
   | "patch_revert"
   | "lua_exec"
