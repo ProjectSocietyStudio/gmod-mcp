@@ -2,8 +2,8 @@ import type {
   AnyToolDef as CoreAnyToolDef,
   BaseToolContext,
   ToolDef as CoreToolDef,
-} from "@rolists/mcp-core";
-import { makeToolkit, ToolRegistry as CoreToolRegistry } from "@rolists/mcp-core";
+} from "@projectsociety/mcp-core";
+import { makeToolkit, ToolRegistry as CoreToolRegistry } from "@projectsociety/mcp-core";
 import type { ZodRawShape } from "zod";
 import type { Bridge } from "../bridge/types.js";
 import type { Config } from "../config.js";
@@ -50,4 +50,4 @@ export {
   isToolImage,
   type ToolImage,
   type ToolResult,
-} from "@rolists/mcp-core";
+} from "@projectsociety/mcp-core";
