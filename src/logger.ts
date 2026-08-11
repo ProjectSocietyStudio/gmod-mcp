@@ -1,7 +1,10 @@
-import { appendFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { AuditLog as CoreAuditLog } from "@rolists/mcp-core";
 
-/** Audit entry kinds. */
+/**
+ * Audit entry kinds. Widens the shared base with this server's own vocabulary: it drives
+ * a live engine over a file bridge and rewrites addon sources, where hammer-mcp drives a
+ * toolchain.
+ */
 export type AuditKind =
   | "daemon_start"
   | "tool_call"
@@ -13,15 +16,6 @@ export type AuditKind =
   | "lua_exec"
   | "error";
 
-export interface AuditEntry {
-  ts: number;
-  kind: AuditKind;
-  sessionId?: string;
-  commandId?: string;
-  /** Free-form payload, shaped by `kind`. */
-  data?: Record<string, unknown>;
-}
-
 /**
  * Append-only JSONL audit log. One line is one event, correlated by `sessionId`
  * and `commandId`. Written to `<stateDir>/logs/audit.jsonl`.
@@ -29,21 +23,6 @@ export interface AuditEntry {
  * Writes are synchronous on purpose: volumes are low, and we want the guarantee
  * that nothing is lost if the daemon dies right after an action.
  */
-export class AuditLog {
-  private readonly file: string;
+export class AuditLog extends CoreAuditLog<AuditKind> {}
 
-  constructor(stateDir: string) {
-    const dir = join(stateDir, "logs");
-    mkdirSync(dir, { recursive: true });
-    this.file = join(dir, "audit.jsonl");
-  }
-
-  record(entry: Omit<AuditEntry, "ts"> & { ts?: number }): void {
-    const full: AuditEntry = { ts: entry.ts ?? Date.now(), ...entry };
-    appendFileSync(this.file, JSON.stringify(full) + "\n");
-  }
-
-  get path(): string {
-    return this.file;
-  }
-}
+export type { AuditEntry } from "@rolists/mcp-core";

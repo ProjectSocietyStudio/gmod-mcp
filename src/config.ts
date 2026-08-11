@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { loadConfig as coreLoadConfig } from "@rolists/mcp-core";
 import { z } from "zod";
 
 /**
@@ -31,54 +30,15 @@ export interface Config extends ConfigFile {
   stateDir: string;
 }
 
-/** Markers that identify the root of the GMod repo. */
-const REPO_MARKERS = ["tools/lint.sh", "CLAUDE.md"];
-
-function looksLikeRepoRoot(dir: string): boolean {
-  return REPO_MARKERS.some((m) => existsSync(join(dir, m)));
-}
-
-/** Walks up from `start` until it finds the repo root. */
-export function findRepoRoot(start: string): string | undefined {
-  let dir = resolve(start);
-  for (;;) {
-    if (looksLikeRepoRoot(dir)) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
-
 /**
  * Loads the effective configuration. The root is resolved in this order:
  * 1. `GMOD_MCP_REPO` (env)  2. the file's `repoRoot` field  3. walking up from cwd.
  */
 export function loadConfig(cwd: string = process.cwd()): Config {
-  const envRoot = process.env.GMOD_MCP_REPO;
-
-  // Look for a config file first, using either the env root or the upward walk.
-  const probeRoot = envRoot ?? findRepoRoot(cwd) ?? cwd;
-  const configPath = join(probeRoot, ".gmod-mcp", "config.json");
-
-  let fromFile: ConfigFile = ConfigFile.parse({});
-  if (existsSync(configPath)) {
-    const raw = JSON.parse(readFileSync(configPath, "utf8")) as unknown;
-    fromFile = ConfigFile.parse(raw);
-  }
-
-  const repoRoot = resolveRepoRoot(envRoot, fromFile.repoRoot, probeRoot);
-  return {
-    ...fromFile,
-    repoRoot,
-    stateDir: join(repoRoot, ".gmod-mcp"),
-  };
+  return coreLoadConfig(
+    { envVar: "GMOD_MCP_REPO", stateDirName: ".gmod-mcp", schema: ConfigFile },
+    cwd,
+  );
 }
 
-function resolveRepoRoot(
-  envRoot: string | undefined,
-  fileRoot: string | undefined,
-  fallback: string,
-): string {
-  const candidate = envRoot ?? fileRoot ?? fallback;
-  return isAbsolute(candidate) ? candidate : resolve(fallback, candidate);
-}
+export { findRepoRoot } from "@rolists/mcp-core";
