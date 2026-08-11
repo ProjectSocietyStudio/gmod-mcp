@@ -154,4 +154,44 @@ describe("FileBridge single-instance lock", () => {
     expect(b.status().owns).toBe(true);
     await b.close();
   });
+
+  it("reclaims the lock when the owner dies AFTER this daemon started", async () => {
+    // The case that cost a session its transport on 11/08/2026. Reclaiming at startup was
+    // already right; the mistake was treating that one decision as final. A daemon that
+    // lost the race stayed degraded for its whole life, and health went on naming a PID
+    // that no longer existed -- telling the operator to close a session already closed.
+    const dir3 = mkdtempSync(join(tmpdir(), "gmod-mcp-late-"));
+
+    // A live owner at construction time: this process, which is certainly alive.
+    const owner = new FileBridge({ dir: dir3, audit, commandTimeoutMs: 100 });
+    const loser = new FileBridge({ dir: dir3, audit, commandTimeoutMs: 100 });
+    expect(loser.status().owns).toBe(false);
+    expect(loser.status().lockedBy?.pid).toBe(process.pid);
+
+    // The owner goes away, exactly as a crashed or closed session would.
+    await owner.close();
+
+    // No restart, no new object: the same instance must notice on its own.
+    expect(loser.status().owns).toBe(true);
+    expect(loser.status().lockedBy).toBeUndefined();
+    await expect(loser.enqueue("sv", "read_runtime", {})).rejects.not.toThrow(
+      /already owns the transport/,
+    );
+    await loser.close();
+  });
+
+  it("does not steal the lock from an owner that is still alive", async () => {
+    // The other half. Without it, a "reclaim" that simply always took the lock would pass
+    // the test above -- and reintroduce the two-daemon failure the lock exists to prevent.
+    const dir4 = mkdtempSync(join(tmpdir(), "gmod-mcp-live-"));
+    const owner = new FileBridge({ dir: dir4, audit, commandTimeoutMs: 100 });
+    const loser = new FileBridge({ dir: dir4, audit, commandTimeoutMs: 100 });
+
+    for (let i = 0; i < 3; i += 1) {
+      expect(loser.status().owns).toBe(false);
+      expect(owner.status().owns).toBe(true);
+    }
+    await loser.close();
+    await owner.close();
+  });
 });

@@ -66,10 +66,13 @@ export class FileBridge extends EventEmitter implements Bridge {
   private readonly commandTimeoutMs: number;
   private readonly orphanGraceMs: number;
   private readonly pending = new Map<string, Pending>();
-  private readonly scanner?: NodeJS.Timeout;
-  private readonly lock: LockState;
+  private scanner?: NodeJS.Timeout;
+  private lock: LockState;
   /** False when the lock was bypassed (tests): nothing to release on the way out. */
   private readonly locking: boolean;
+  private readonly version: string;
+  private readonly repoRoot: string;
+  private readonly scanIntervalMs: number;
 
   /**
    * Commands we gave up on, kept so their late result is recognised as OURS and deleted
@@ -93,6 +96,9 @@ export class FileBridge extends EventEmitter implements Bridge {
     for (const d of [this.cmdDir, this.resDir, this.evtDir]) mkdirSync(d, { recursive: true });
 
     this.locking = opts.lock !== false;
+    this.version = opts.version ?? "unknown";
+    this.repoRoot = opts.repoRoot ?? opts.dir;
+    this.scanIntervalMs = opts.scanIntervalMs ?? 150;
     this.lock = !this.locking
       ? { path: join(opts.dir, "daemon.lock"), held: true }
       : acquireTransportLock(opts.dir, {
@@ -103,14 +109,53 @@ export class FileBridge extends EventEmitter implements Bridge {
     // No lock, no scanner: a daemon that does not own the directory must not read, and
     // above all must not delete, anything in it.
     if (this.lock.held) {
-      this.scanner = setInterval(() => this.scan(), opts.scanIntervalMs ?? 150);
+      this.scanner = setInterval(() => this.scan(), this.scanIntervalMs);
       // Do not keep the process alive just for this timer.
       this.scanner.unref?.();
     }
   }
 
+  /**
+   * Retries the lock when the daemon that held it has since died.
+   *
+   * The lock is reclaimed correctly *at startup*, but the decision was then final: a daemon
+   * that lost the race stayed degraded for its whole life, even once the winner exited.
+   * `health` went on naming a PID that no longer existed, and the operator was told to close
+   * a session that was already closed. Observed 11/08/2026 by a second session.
+   *
+   * Simply re-attempts the acquisition rather than testing the recorded PID first. The
+   * acquisition is atomic (`wx`) and already refuses a live owner, so retrying is safe --
+   * and it also covers the case a liveness test misses: an owner that released the file
+   * cleanly while its process is still around. Only ever runs when we do NOT hold the
+   * lock, so it can never disturb a daemon that is already scanning.
+   */
+  private reclaimIfOwnerGone(): void {
+    if (!this.locking || this.lock.held) return;
+    const owner = this.lock.owner;
+
+    const next = acquireTransportLock(this.dir, {
+      version: this.version,
+      repoRoot: this.repoRoot,
+    });
+    if (!next.held) {
+      // Someone else took it in the meantime: adopt the new owner so the message names a
+      // process that exists.
+      this.lock = next;
+      return;
+    }
+
+    this.lock = next;
+    this.audit.record({
+      kind: "bridge_lock_reclaimed",
+      data: { previousPid: owner?.pid ?? null, path: next.path },
+    });
+    this.scanner = setInterval(() => this.scan(), this.scanIntervalMs);
+    this.scanner.unref?.();
+  }
+
   /** Readable relay state, for `health`. Guessing at this cost the original debugging. */
   status(): BridgeStatus {
+    this.reclaimIfOwnerGone();
     return {
       transportDir: this.dir,
       owns: this.lock.held,

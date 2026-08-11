@@ -24,6 +24,12 @@ import { join } from "node:path";
  * The lock is advisory and PID-based: a daemon killed without releasing leaves a stale
  * file, which the next start reclaims after checking the PID is gone. That is the only
  * failure mode that must not need a human.
+ *
+ * Reclaiming at startup was correct and not sufficient. Until 11/08/2026 that one decision
+ * was final: a daemon that lost the race stayed degraded for its whole life, even after the
+ * winner exited, and `health` went on naming a PID that no longer existed -- telling the
+ * operator to close a session already closed. `FileBridge.status()` now re-attempts the
+ * acquisition whenever it does not hold the lock.
  */
 const LOCK_NAME = "daemon.lock";
 
@@ -139,6 +145,6 @@ export function lockConflictMessage(state: LockState, dir: string): string {
     `This daemon therefore left the directory untouched.`,
     `Diagnose with: ps -eo pid,etime,args | grep gmod-mcp/dist/index.js`,
     `-- more than one line means two Claude Code sessions are open on this repo.`,
-    `Close the other session, or delete ${state.path} if that PID is gone.`,
+    `Close the other session; this daemon retakes the transport on its own once that PID is gone.`,
   ].join(" ");
 }
