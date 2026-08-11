@@ -1,4 +1,4 @@
-import { loadConfig as coreLoadConfig } from "@rolists/mcp-core";
+import { loadConfig as coreLoadConfig } from "@projectsociety/mcp-core";
 import { z } from "zod";
 
 /**
@@ -41,4 +41,4 @@ export function loadConfig(cwd: string = process.cwd()): Config {
   );
 }
 
-export { findRepoRoot } from "@rolists/mcp-core";
+export { findRepoRoot } from "@projectsociety/mcp-core";

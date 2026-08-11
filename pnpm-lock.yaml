@@ -11,7 +11,7 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@3.25.76)
-      '@rolists/mcp-core':
+      '@projectsociety/mcp-core':
         specifier: file:../mcp-core
         version: file:../mcp-core(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))(zod@3.25.76)
       zod:
@@ -346,7 +346,7 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@rolists/mcp-core@file:../mcp-core':
+  '@projectsociety/mcp-core@file:../mcp-core':
     resolution: {directory: ../mcp-core, type: directory}
     engines: {node: '>=20'}
     peerDependencies:
@@ -1242,7 +1242,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@rolists/mcp-core@file:../mcp-core(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))(zod@3.25.76)':
+  '@projectsociety/mcp-core@file:../mcp-core(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))(zod@3.25.76)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
       zod: 3.25.76
