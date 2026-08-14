@@ -7,14 +7,26 @@
 util.AddNetworkString("gmod_mcp_cl_cmd")
 util.AddNetworkString("gmod_mcp_cl_res")
 
--- Target: the player matching a given SteamID, otherwise the first one connected.
+-- Target: the player matching a given SteamID, otherwise the first HUMAN connected.
+--
+-- Bots are skipped, and the distinction is not cosmetic: a bot is a real Player entity with a
+-- valid SteamID64, so it satisfies every check this function used to make -- but it has no client,
+-- so it can never answer a realm=cl command. Picking one meant the daemon waited out its own
+-- timeout and blamed srcds, which was fine. r-harness creates bots on purpose, so the first one
+-- spawned would have silently become "the client" of the bridge.
+--
+-- An explicit args.player still wins, bot or not: asking for a specific player by SteamID is a
+-- deliberate act, and failing it silently would be worse than letting it time out.
 local function targetPlayer(args)
     if istable(args) and isstring(args.player) then
         for _, ply in ipairs(player.GetAll()) do
             if ply:SteamID() == args.player or ply:SteamID64() == args.player then return ply end
         end
     end
-    return player.GetAll()[1]
+    for _, ply in ipairs(player.GetAll()) do
+        if not ply:IsBot() then return ply end
+    end
+    return nil
 end
 
 -- Reassembly of chunked client results, and the commands still awaiting one.
